@@ -28,7 +28,8 @@
         "title": "Camera Hub",
         "menu_options": {
           "cameras": "Cameras",
-          "zones": "Zones"
+          "zones": "Zones",
+          "notifications": "Notifications"
         }
       },
       "cameras": {
@@ -44,9 +45,24 @@
       },
       "zones": {
         "title": "Zones",
-        "description": "A zone is a group of cameras that share notifications and pauses. List the cameras in order of importance: when several cameras in a zone see a person at the same time, the notification shows the first one.",
+        "description": "A zone is a group of cameras that share notifications and pauses. Each burst of alerts in a zone is one phone notification. It shows the camera that saw the person last, except that a priority camera keeps the notification over the zone's other cameras.",
         "data": {
           "zones": "Zones"
+        }
+      },
+      "notifications": {
+        "title": "Notifications",
+        "description": "Camera Hub sends one notification per burst of person alerts in a zone. In shadow delivery it decides but sends nothing, and fires a camera_hub_decision event for each decision: use it to compare with another notification setup before you switch.",
+        "data": {
+          "delivery": "Delivery",
+          "recipients": "Notify services",
+          "quiet_window_seconds": "Quiet window",
+          "faces": "Recognised faces"
+        },
+        "data_description": {
+          "recipients": "For example mobile_app_my_phone.",
+          "quiet_window_seconds": "A burst ends after this long without a new alert in the zone.",
+          "faces": "No notification when every recognised face in an alert belongs to a person who is at home."
         }
       }
     },
@@ -54,7 +70,8 @@
       "default_not_selected": "The default camera must be one of the selected cameras.",
       "zone_names": "Each zone needs a name, and the names must be different.",
       "zone_name_all": "\"all\" is reserved: it means every zone in the pause services.",
-      "zone_cameras": "Each zone needs at least one camera."
+      "zone_cameras": "Each zone needs at least one camera.",
+      "zone_priority": "Priority cameras must also be cameras of the zone."
     }
   },
   "services": {
@@ -80,6 +97,15 @@
           "name": "Zone",
           "description": "The zone name, or \"all\"."
         }
+      }
+    }
+  },
+  "selector": {
+    "delivery": {
+      "options": {
+        "off": "Off",
+        "shadow": "Shadow: decide, but send nothing",
+        "live": "Live"
       }
     }
   }

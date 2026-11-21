@@ -61,10 +61,10 @@ async def test_unknown_zone_is_an_error(hass: HomeAssistant, hub: MockConfigEntr
         )
 
 
-async def test_switch_off_pauses_for_an_hour(hass: HomeAssistant, hub: MockConfigEntry) -> None:
+async def test_switch_off_pauses_for_30_minutes(hass: HomeAssistant, hub: MockConfigEntry) -> None:
     await hass.services.async_call("switch", "turn_off", {"entity_id": SWITCH}, blocking=True)
 
-    assert abs(_time_left(hass) - timedelta(hours=1)) < timedelta(seconds=1)
+    assert abs(_time_left(hass) - timedelta(minutes=30)) < timedelta(seconds=1)
 
 
 async def test_pause_survives_a_reload(hass: HomeAssistant, hub: MockConfigEntry) -> None:

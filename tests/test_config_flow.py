@@ -91,7 +91,12 @@ async def test_options_flow_saves_zones(
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert hub_entry.options[CONF_ZONES] == [
-        {"name": "Front", "cameras": ["camera.porch", "camera.nursery"], "notify": True}
+        {
+            "name": "Front",
+            "cameras": ["camera.porch", "camera.nursery"],
+            "priority": [],
+            "notify": True,
+        }
     ]
 
 
@@ -107,6 +112,10 @@ async def test_options_flow_saves_zones(
         ),
         ([{"name": "All", "cameras": ["camera.porch"]}], "zone_name_all"),
         ([{"name": "Empty", "cameras": []}], "zone_cameras"),
+        (
+            [{"name": "Front", "cameras": ["camera.porch"], "priority": ["camera.nursery"]}],
+            "zone_priority",
+        ),
     ],
 )
 async def test_options_flow_rejects_unclear_zones(

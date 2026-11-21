@@ -9,6 +9,7 @@ from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 
 from .const import DOMAIN
 from .models import Zone
+from .notifier import Notifier
 from .pause import PauseManager
 
 
@@ -18,6 +19,7 @@ class HubData:
 
     zones: list[Zone]
     pauses: PauseManager
+    notifier: Notifier
 
 
 type CameraHubConfigEntry = ConfigEntry[HubData]

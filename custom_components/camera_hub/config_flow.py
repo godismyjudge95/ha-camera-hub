@@ -18,9 +18,17 @@ from .const import (
     ALL_ZONES,
     CONF_CAMERAS,
     CONF_DEFAULT_CAMERA,
+    CONF_DELIVERY,
+    CONF_FACES,
+    CONF_QUIET_WINDOW,
+    CONF_RECIPIENTS,
     CONF_RETURN_AFTER,
     CONF_ZONES,
+    DEFAULT_QUIET_WINDOW,
     DEFAULT_RETURN_AFTER,
+    DELIVERY_LIVE,
+    DELIVERY_OFF,
+    DELIVERY_SHADOW,
     DOMAIN,
     FRIGATE_DOMAIN,
 )
@@ -76,8 +84,14 @@ def _zones_schema(zones: list[dict[str, Any]]) -> vol.Schema:
                             "selector": {"text": {}},
                         },
                         "cameras": {
-                            "label": "Cameras, most important first",
+                            "label": "Cameras",
                             "required": True,
+                            "selector": {
+                                "entity": {"filter": [dict(frigate_camera)], "multiple": True}
+                            },
+                        },
+                        "priority": {
+                            "label": "Priority cameras: their alerts keep the notification",
                             "selector": {
                                 "entity": {"filter": [dict(frigate_camera)], "multiple": True}
                             },
@@ -102,7 +116,64 @@ def _validate_zones(zones: list[dict[str, Any]]) -> dict[str, str]:
         return {CONF_ZONES: "zone_name_all"}
     if any(not zone.get("cameras") for zone in zones):
         return {CONF_ZONES: "zone_cameras"}
+    if any(set(zone.get("priority", [])) - set(zone["cameras"]) for zone in zones):
+        return {CONF_ZONES: "zone_priority"}
     return {}
+
+
+def _notifications_schema(defaults: dict[str, Any], notify_services: list[str]) -> vol.Schema:
+    return vol.Schema(
+        {
+            vol.Required(
+                CONF_DELIVERY, default=defaults.get(CONF_DELIVERY, DELIVERY_OFF)
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[DELIVERY_OFF, DELIVERY_SHADOW, DELIVERY_LIVE],
+                    translation_key="delivery",
+                    mode=selector.SelectSelectorMode.LIST,
+                )
+            ),
+            vol.Optional(
+                CONF_RECIPIENTS, default=defaults.get(CONF_RECIPIENTS, [])
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=notify_services, multiple=True, custom_value=True
+                )
+            ),
+            vol.Required(
+                CONF_QUIET_WINDOW, default=defaults.get(CONF_QUIET_WINDOW, DEFAULT_QUIET_WINDOW)
+            ): vol.All(
+                selector.NumberSelector(
+                    selector.NumberSelectorConfig(
+                        min=0,
+                        max=1800,
+                        step=10,
+                        unit_of_measurement="s",
+                        mode=selector.NumberSelectorMode.BOX,
+                    )
+                ),
+                vol.Coerce(int),
+            ),
+            vol.Optional(CONF_FACES, default=defaults.get(CONF_FACES, [])): selector.ObjectSelector(
+                selector.ObjectSelectorConfig(
+                    multiple=True,
+                    label_field="sub_label",
+                    fields={
+                        "sub_label": {
+                            "label": "Face name in Frigate",
+                            "required": True,
+                            "selector": {"text": {}},
+                        },
+                        "person": {
+                            "label": "Person",
+                            "required": True,
+                            "selector": {"entity": {"filter": [{"domain": "person"}]}},
+                        },
+                    },
+                )
+            ),
+        }
+    )
 
 
 def _validate_cameras(user_input: dict[str, Any]) -> dict[str, str]:
@@ -145,7 +216,9 @@ class CameraHubOptionsFlow(OptionsFlow):
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Pick what to change."""
-        return self.async_show_menu(step_id="init", menu_options=["cameras", "zones"])
+        return self.async_show_menu(
+            step_id="init", menu_options=["cameras", "zones", "notifications"]
+        )
 
     async def async_step_cameras(
         self, user_input: dict[str, Any] | None = None
@@ -171,6 +244,7 @@ class CameraHubOptionsFlow(OptionsFlow):
                 {
                     "name": str(zone["name"]).strip(),
                     "cameras": list(zone["cameras"]),
+                    "priority": list(zone.get("priority", [])),
                     "notify": bool(zone.get("notify", True)),
                 }
                 for zone in user_input.get(CONF_ZONES, [])
@@ -183,7 +257,12 @@ class CameraHubOptionsFlow(OptionsFlow):
             current = zones
         else:
             current = [
-                {"name": zone.name, "cameras": list(zone.cameras), "notify": zone.notify}
+                {
+                    "name": zone.name,
+                    "cameras": list(zone.cameras),
+                    "priority": list(zone.priority),
+                    "notify": zone.notify,
+                }
                 for zone in zones_from_options(self.config_entry.options)
             ]
 
@@ -191,4 +270,23 @@ class CameraHubOptionsFlow(OptionsFlow):
             step_id="zones",
             data_schema=_zones_schema(current),
             errors=errors,
+        )
+
+    async def async_step_notifications(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Choose who gets notifications, and whether they are sent."""
+        if user_input is not None:
+            faces = [
+                {"sub_label": str(face["sub_label"]).strip(), "person": face["person"]}
+                for face in user_input.get(CONF_FACES, [])
+            ]
+            return self.async_create_entry(
+                data={**self.config_entry.options, **user_input, CONF_FACES: faces}
+            )
+
+        notify_services = sorted(self.hass.services.async_services_for_domain("notify"))
+        return self.async_show_form(
+            step_id="notifications",
+            data_schema=_notifications_schema(dict(self.config_entry.options), notify_services),
         )

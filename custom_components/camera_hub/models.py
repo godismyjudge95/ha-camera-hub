@@ -17,9 +17,10 @@ class Zone:
 
     id: str
     name: str
-    # In priority order: when several cameras of the zone see a person in
-    # the same burst, the notification shows the camera highest in this list.
     cameras: tuple[str, ...]
+    # Cameras whose alerts keep the notification over the zone's other
+    # cameras, for example a doorbell over a driveway camera.
+    priority: tuple[str, ...]
     notify: bool
 
     def as_dict(self) -> dict[str, Any]:
@@ -28,6 +29,7 @@ class Zone:
             "id": self.id,
             "name": self.name,
             "cameras": list(self.cameras),
+            "priority": list(self.priority),
             "notify": self.notify,
         }
 
@@ -47,6 +49,7 @@ def zones_from_options(options: Mapping[str, Any]) -> list[Zone]:
                 id=zone_id,
                 name=name,
                 cameras=tuple(raw.get("cameras", [])),
+                priority=tuple(raw.get("priority", [])),
                 notify=bool(raw.get("notify", True)),
             )
         )

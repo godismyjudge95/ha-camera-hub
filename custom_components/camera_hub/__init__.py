@@ -12,6 +12,7 @@ from .const import DOMAIN
 from .frontend import async_register_frontend
 from .hub import CameraHubConfigEntry, HubData
 from .models import zones_from_options
+from .notifier import Notifier
 from .pause import PauseManager
 from .services import async_register_services
 
@@ -30,10 +31,14 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
 async def async_setup_entry(hass: HomeAssistant, entry: CameraHubConfigEntry) -> bool:
     """Set up Camera Hub from a config entry."""
+    zones = zones_from_options(entry.options)
     pauses = PauseManager(hass)
     await pauses.async_load()
-    entry.runtime_data = HubData(zones=zones_from_options(entry.options), pauses=pauses)
+    notifier = Notifier(hass, entry.options, zones, pauses)
+    entry.runtime_data = HubData(zones=zones, pauses=pauses, notifier=notifier)
     entry.async_on_unload(pauses.async_unload)
+    entry.async_on_unload(notifier.async_stop)
+    await notifier.async_start()
     entry.async_on_unload(entry.add_update_listener(_async_options_updated))
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True

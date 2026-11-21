@@ -16,9 +16,26 @@ DEFAULT_RETURN_AFTER: Final = 120
 # A list of zones: {"name", "cameras", "notify"}.
 CONF_ZONES: Final = "zones"
 
+# Notifications: who gets them, and whether they are sent.
+CONF_RECIPIENTS: Final = "recipients"
+CONF_DELIVERY: Final = "delivery"
+DELIVERY_OFF: Final = "off"
+# Decide as in "live", but only report the decisions as events.
+DELIVERY_SHADOW: Final = "shadow"
+DELIVERY_LIVE: Final = "live"
+CONF_QUIET_WINDOW: Final = "quiet_window_seconds"
+DEFAULT_QUIET_WINDOW: Final = 180
+# A list of {"sub_label", "person"}: a recognised face and its person entity.
+CONF_FACES: Final = "faces"
+
+# The event every notification decision fires.
+EVENT_DECISION: Final = "camera_hub_decision"
+# The action id prefix of a notification's pause button.
+PAUSE_ACTION_PREFIX: Final = "CAMERA_HUB_PAUSE_"
+
 # A zone name that stands for every zone in the pause services.
 ALL_ZONES: Final = "all"
-DEFAULT_PAUSE_MINUTES: Final = 60
+DEFAULT_PAUSE_MINUTES: Final = 30
 
 # The card bundle is served from this URL base by the integration itself.
 FRONTEND_URL_BASE: Final = "/camera_hub_static"

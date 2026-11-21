@@ -81,6 +81,16 @@ def _frigate_config(hass: HomeAssistant, instance_id: str) -> dict[str, Any]:
     return {}
 
 
+def frigate_topic_prefix(hass: HomeAssistant) -> str:
+    """Return the MQTT topic prefix Frigate publishes under."""
+    for entry_data in hass.data.get(FRIGATE_DOMAIN, {}).values():
+        if isinstance(entry_data, dict) and isinstance(entry_data.get("config"), dict):
+            prefix = (entry_data["config"].get("mqtt") or {}).get("topic_prefix")
+            if isinstance(prefix, str) and prefix:
+                return prefix
+    return FRIGATE_DOMAIN
+
+
 def _has_backchannel(config: dict[str, Any], stream: str) -> bool:
     sources = ((config.get("go2rtc") or {}).get("streams") or {}).get(stream) or []
     if isinstance(sources, str):

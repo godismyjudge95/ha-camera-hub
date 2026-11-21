@@ -20,7 +20,7 @@ async def test_card_bundle_is_loaded_on_dashboards(
 ) -> None:
     await _setup(hass, hub_entry)
 
-    assert "/camera_hub_static/camera-hub-card.js?v=0.3.0" in hass.data[DATA_EXTRA_MODULE_URL].urls
+    assert "/camera_hub_static/camera-hub-card.js?v=0.4.0" in hass.data[DATA_EXTRA_MODULE_URL].urls
 
 
 async def test_config_lists_cameras_with_their_streams(
@@ -38,7 +38,7 @@ async def test_config_lists_cameras_with_their_streams(
 
     assert response["success"]
     assert response["result"] == {
-        "version": "0.3.0",
+        "version": "0.4.0",
         "default_camera": "camera.nursery",
         # Entries made before this option existed get the default.
         "return_after_seconds": 120,
@@ -47,6 +47,7 @@ async def test_config_lists_cameras_with_their_streams(
                 "id": "backyard",
                 "name": "Backyard",
                 "cameras": ["camera.porch"],
+                "priority": [],
                 "notify": True,
                 "switch_entity": "switch.camera_hub_backyard_alerts",
                 "paused_until_entity": "sensor.camera_hub_backyard_paused_until",
@@ -55,6 +56,7 @@ async def test_config_lists_cameras_with_their_streams(
                 "id": "inside",
                 "name": "Inside",
                 "cameras": ["camera.nursery"],
+                "priority": [],
                 "notify": False,
                 "switch_entity": "switch.camera_hub_inside_alerts",
                 "paused_until_entity": "sensor.camera_hub_inside_paused_until",
