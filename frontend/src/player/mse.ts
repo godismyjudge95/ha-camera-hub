@@ -15,6 +15,59 @@ const CODECS = [
   "opus",
 ];
 
+type MediaSourceClass = typeof MediaSource;
+
+export interface AttachedMediaSource {
+  mediaSource: MediaSource;
+  isTypeSupported(type: string): boolean;
+  detach(): void;
+}
+
+const SOURCE_OPEN_MS = 5000;
+
+// Creates a media source on `video` and waits until it opens.
+// WebKit (Safari, iOS, and the Home Assistant apps for Apple devices) has
+// ManagedMediaSource, which must be attached with `srcObject` and needs
+// remote playback off; other browsers take MediaSource through an object URL.
+export async function attachMediaSource(video: HTMLVideoElement): Promise<AttachedMediaSource> {
+  const managed = (window as unknown as { ManagedMediaSource?: MediaSourceClass }).ManagedMediaSource;
+  const Type = managed ?? window.MediaSource;
+  if (!Type) throw new Error("This browser cannot play the stream");
+  const mediaSource = new Type();
+  let objectUrl: string | undefined;
+  if (managed) {
+    video.disableRemotePlayback = true;
+    video.removeAttribute("src");
+    video.srcObject = mediaSource;
+  } else {
+    video.srcObject = null;
+    objectUrl = URL.createObjectURL(mediaSource);
+    video.src = objectUrl;
+  }
+  const detach = () => {
+    if (managed) video.srcObject = null;
+    else video.removeAttribute("src");
+    video.load();
+    if (objectUrl) URL.revokeObjectURL(objectUrl);
+  };
+  const opened = await new Promise<boolean>((resolve) => {
+    const timer = setTimeout(() => resolve(false), SOURCE_OPEN_MS);
+    mediaSource.addEventListener(
+      "sourceopen",
+      () => {
+        clearTimeout(timer);
+        resolve(true);
+      },
+      { once: true },
+    );
+  });
+  if (!opened) {
+    detach();
+    throw new Error("This browser did not open the video player");
+  }
+  return { mediaSource, isTypeSupported: (type) => Type.isTypeSupported(type), detach };
+}
+
 // go2rtc picks the stream codecs from this comma-separated list.
 export function supportedCodecs(isTypeSupported: (type: string) => boolean): string {
   return CODECS.filter((codec) => isTypeSupported(`video/mp4; codecs="${codec}"`)).join();

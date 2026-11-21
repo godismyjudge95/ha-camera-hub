@@ -18,7 +18,7 @@
 import { getIceServers } from "../api/ha";
 import type { HomeAssistant } from "../ha-types";
 import { negotiate, openSocket, send, waitForConnection } from "./go2rtc-socket";
-import { liveEdgeAction, supportedCodecs } from "./mse";
+import { type AttachedMediaSource, attachMediaSource, liveEdgeAction, supportedCodecs } from "./mse";
 
 import type { StreamSource } from "./go2rtc-socket";
 import { errorMessage } from "../errors";
@@ -37,7 +37,11 @@ interface Session {
   close(): void;
 }
 
-const MODES: PlayerMode[] = ["mse", "webrtc"];
+// Some web views (for example the Home Assistant app for macOS) have no
+// WebRTC; they play over MSE only.
+function availableModes(): PlayerMode[] {
+  return typeof RTCPeerConnection === "undefined" ? ["mse"] : ["mse", "webrtc"];
+}
 const WEBRTC_TIMEOUT_MS = 5000;
 const FIRST_FRAME_MS = 6000;
 const MAX_RETRY_MS = 30_000;
@@ -113,7 +117,7 @@ export class LivePlayer {
     this.onStatus({ state: "connecting" });
     let reason = "No video arrived";
     for (const stream of streams) {
-      for (const mode of MODES) {
+      for (const mode of availableModes()) {
         let session: Session;
         try {
           session = await startSession(mode, this.getHass(), { ...source, stream }, this.video, sessionEnded);
@@ -238,26 +242,21 @@ async function startWebRtc(
   return { mode: "webrtc", close };
 }
 
-type MediaSourceClass = typeof MediaSource;
-
 async function startMse(
   hass: HomeAssistant,
   source: StreamSource,
   video: HTMLVideoElement,
   onEnded: (reason: string) => void,
 ): Promise<Session> {
-  // iOS has only ManagedMediaSource, which needs remote playback disabled.
-  const managed = (window as unknown as { ManagedMediaSource?: MediaSourceClass })
-    .ManagedMediaSource;
-  const MediaSourceType = managed ?? window.MediaSource;
-  if (!MediaSourceType) throw new Error("This browser cannot play the stream");
-
   const ws = await openSocket(hass, source);
-  const mediaSource = new MediaSourceType();
-  if (managed) video.disableRemotePlayback = true;
-  video.srcObject = null;
-  const objectUrl = URL.createObjectURL(mediaSource);
-  video.src = objectUrl;
+  let attached: AttachedMediaSource;
+  try {
+    attached = await attachMediaSource(video);
+  } catch (error) {
+    ws.close();
+    throw error;
+  }
+  const { mediaSource, isTypeSupported } = attached;
 
   let closed = false;
   const onVideoError = () => ended(DECODE_ERROR);
@@ -267,9 +266,7 @@ async function startMse(
     ws.close();
     video.removeEventListener("error", onVideoError);
     mediaSource.removeEventListener("sourceclose", onSourceClose);
-    video.removeAttribute("src");
-    video.load();
-    URL.revokeObjectURL(objectUrl);
+    attached.detach();
   };
   const ended = (reason: string) => {
     if (!closed) {
@@ -280,12 +277,8 @@ async function startMse(
   // A decode error makes the browser close the media source. Stop then,
   // instead of adding more data to it.
   video.addEventListener("error", onVideoError);
-
-  await new Promise((resolve) =>
-    mediaSource.addEventListener("sourceopen", resolve, { once: true }),
-  );
   mediaSource.addEventListener("sourceclose", onSourceClose);
-  send(ws, "mse", supportedCodecs((type) => MediaSourceType.isTypeSupported(type)));
+  send(ws, "mse", supportedCodecs(isTypeSupported));
 
   let buffer: SourceBuffer | undefined;
   const queue: ArrayBuffer[] = [];
@@ -318,7 +311,7 @@ async function startMse(
     if (typeof event.data === "string") {
       const message = JSON.parse(event.data) as { type: string; value: string };
       if (message.type === "mse") {
-        if (!MediaSourceType.isTypeSupported(message.value)) {
+        if (!isTypeSupported(message.value)) {
           ended(DECODE_ERROR);
           return;
         }

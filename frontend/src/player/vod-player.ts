@@ -7,6 +7,7 @@
 
 import { type MediaPlaylist, parseMediaPlaylist, segmentIndexAt, segmentUrl } from "./hls";
 import { codecsFromInitSegment } from "./mp4-codecs";
+import { type AttachedMediaSource, attachMediaSource } from "./mse";
 import { errorMessage } from "../errors";
 
 // How far ahead of the play position segments are loaded.
@@ -20,7 +21,7 @@ export class VodPlayer {
   private playlist?: MediaPlaylist;
   private playlistUrl = "";
   private buffer?: SourceBuffer;
-  private objectUrl?: string;
+  private attached?: AttachedMediaSource;
   private readonly loaded = new Set<number>();
   private loading = false;
   private closed = false;
@@ -46,10 +47,8 @@ export class VodPlayer {
       if (this.playlist.segments.length === 0) throw new Error("There is no recording for this time");
 
       const init = new Uint8Array(await this.fetchBytes(this.playlist.initUri));
-      const mediaSource = new MediaSource();
-      this.objectUrl = URL.createObjectURL(mediaSource);
-      this.video.src = this.objectUrl;
-      await new Promise((resolve) => mediaSource.addEventListener("sourceopen", resolve, { once: true }));
+      this.attached = await attachMediaSource(this.video);
+      const { mediaSource } = this.attached;
       mediaSource.duration = this.playlist.duration;
 
       this.buffer = mediaSource.addSourceBuffer(`video/mp4; codecs="${codecsFromInitSegment(init)}"`);
@@ -73,9 +72,7 @@ export class VodPlayer {
     this.abort.abort();
     this.video.removeEventListener("timeupdate", this.fill);
     this.video.removeEventListener("seeking", this.fill);
-    this.video.removeAttribute("src");
-    this.video.load();
-    if (this.objectUrl) URL.revokeObjectURL(this.objectUrl);
+    this.attached?.detach();
   }
 
   // Appends the segments from the play position to AHEAD_SECONDS ahead.
