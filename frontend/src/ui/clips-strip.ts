@@ -114,7 +114,7 @@ export class ClipsStrip extends LitElement {
     const reviews = this.store?.reviews ?? [];
     const visible = reviews.filter((review) => reviewMatches(review, this.filter));
     return html`
-      <div class="header ${this.layout}">
+      <div class="header ${this.layout === "list" ? "wrap" : ""}">
         ${this.layout === "row" ? html`<span class="title">Recent alerts</span>` : nothing}
         <div class="chips">
           ${FILTERS.map(
@@ -386,7 +386,7 @@ export class ClipsStrip extends LitElement {
         flex: none;
         color: var(--ch-text-secondary);
       }
-      .header.list .chips {
+      .header.wrap .chips {
         flex-wrap: wrap;
       }
     `,
