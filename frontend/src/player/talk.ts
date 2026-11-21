@@ -26,8 +26,10 @@ export interface TalkUpdate {
 // Why talk cannot work on this page, or undefined when it can.
 export function talkUnavailableReason(): string | undefined {
   if (!window.isSecureContext) return "Talk needs Home Assistant over HTTPS";
-  if (!navigator.mediaDevices?.getUserMedia) return "This browser cannot use the microphone";
-  if (typeof RTCPeerConnection === "undefined") return "This browser cannot send audio";
+  // The Home Assistant app for macOS, for example, has neither.
+  if (typeof RTCPeerConnection === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+    return "Talk does not work in this app. Open Home Assistant in a web browser to talk.";
+  }
   return undefined;
 }
 

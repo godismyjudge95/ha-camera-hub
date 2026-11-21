@@ -41,6 +41,8 @@ export class MainView extends LitElement {
     camera: { attribute: false },
     snapshotRefresh: { attribute: false },
     timelineOpen: { attribute: false },
+    pinnable: { attribute: false },
+    pinned: { attribute: false },
     statuses: { state: true },
     shown: { state: true },
     playback: { state: true },
@@ -64,6 +66,9 @@ export class MainView extends LitElement {
   declare snapshotRefresh: number;
   // The card shows the timeline; the rewind button shows it as on.
   declare timelineOpen: boolean;
+  // The card's idle return can be paused; the view shows and toggles it.
+  declare pinnable: boolean;
+  declare pinned: boolean;
   // One status per live video element.
   declare statuses: [PlayerStatus, PlayerStatus];
   // The live video element on screen.
@@ -391,6 +396,9 @@ export class MainView extends LitElement {
       case "ptz":
         this.ptzOpen = !this.ptzOpen;
         break;
+      case "pin":
+        this.dispatchEvent(new CustomEvent("pin-toggle", { bubbles: true, composed: true }));
+        break;
     }
   }
 
@@ -469,6 +477,7 @@ export class MainView extends LitElement {
               </span>`
             : html`<span class="badge recording"><ha-icon icon="mdi:history"></ha-icon>${clock}</span>`}
           <span class="name">${camera?.name ?? ""}</span>
+          ${this.pinned ? html`<ha-icon class="pinned" icon="mdi:pin" title="Staying on this camera"></ha-icon>` : nothing}
         </div>
         ${message ? html`<div class="message">${message}</div>` : nothing}
         <camera-hub-talk-banner .talk=${this.talkUpdate}></camera-hub-talk-banner>
@@ -494,6 +503,8 @@ export class MainView extends LitElement {
             .talk=${live ? this.talkState() : undefined}
             .ptz=${live && (camera?.ptz ?? false)}
             .ptzOpen=${this.ptzOpen}
+            .pinnable=${this.pinnable}
+            .pinned=${this.pinned}
           ></camera-hub-player-controls>
         </div>
       </div>
@@ -574,6 +585,11 @@ export class MainView extends LitElement {
         font-size: 20px;
         font-weight: 600;
         text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+      }
+      .pinned {
+        --mdc-icon-size: 20px;
+        color: var(--ch-accent);
+        filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.6));
       }
       .badge {
         display: inline-flex;

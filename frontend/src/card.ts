@@ -69,10 +69,14 @@ export class CameraHubCard extends LitElement {
     tab: { state: true },
     timelineOpen: { state: true },
     playbackPosition: { state: true },
+    pinned: { state: true },
   };
 
   declare hass: HomeAssistant;
   declare load: LoadState;
+  // The user pinned the camera on screen: no return to the default camera
+  // until they unpin it. It lasts until the page reloads.
+  declare pinned: boolean;
   // The camera in the main view.
   declare selected: string | undefined;
   // Changes every SNAPSHOT_REFRESH_MS while the page is visible, so the
@@ -104,6 +108,7 @@ export class CameraHubCard extends LitElement {
   constructor() {
     super();
     this.load = { state: "loading" };
+    this.pinned = false;
     this.snapshotRefresh = Date.now();
     this.reviewsRevision = 0;
     this.shift = [0, 0];
@@ -115,6 +120,10 @@ export class CameraHubCard extends LitElement {
     // Any touch on the card counts as activity, also on controls that stop
     // the event from bubbling further.
     this.addEventListener("pointerdown", () => this.idle.restart(), { capture: true });
+    this.addEventListener("pin-toggle", () => {
+      this.pinned = !this.pinned;
+      this.idle.hold(this.pinned);
+    });
     this.addEventListener("camera-select", (event) => {
       this.selected = (event as CustomEvent<string>).detail;
     });
@@ -263,6 +272,8 @@ export class CameraHubCard extends LitElement {
       .camera=${main}
       .snapshotRefresh=${this.snapshotRefresh}
       .timelineOpen=${this.phone ? this.tab === "timeline" : this.timelineOpen}
+      .pinnable=${this.load.config.return_after_seconds > 0}
+      .pinned=${this.pinned}
     ></camera-hub-main-view>`;
     const tiles = html`<camera-hub-tile-rail
       .hass=${this.hass}

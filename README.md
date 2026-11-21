@@ -18,7 +18,9 @@ notifications for Frigate's person alerts.
   camera's detect stream instead. Web views without MSE and WebRTC (for
   example the Home Assistant app for macOS) play Home Assistant's own HLS
   stream, which starts slower and runs a few seconds behind live.
-- Push to talk, and pan and tilt.
+- Push to talk (hold the microphone button), and pan and tilt.
+- The card returns to its default camera when nobody touches it. The pin
+  button keeps the camera on screen until you tap it again or reload.
 - Pauses of the notifications, per zone.
 - A doorbell screen over every card when the doorbell rings or a person comes
   to the door.

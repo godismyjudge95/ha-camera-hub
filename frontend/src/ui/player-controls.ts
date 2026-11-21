@@ -25,7 +25,8 @@ export type ControlAction =
         | "ptz"
         | "fullscreen"
         | "rewind"
-        | "live";
+        | "live"
+        | "pin";
     }
   | { action: "seek"; seconds: number }
   | { action: "skip"; seconds: number }
@@ -49,6 +50,8 @@ export class PlayerControls extends LitElement {
     rewinding: { attribute: false },
     ptz: { attribute: false },
     ptzOpen: { attribute: false },
+    pinnable: { attribute: false },
+    pinned: { attribute: false },
     dragging: { state: true },
   };
 
@@ -69,6 +72,9 @@ export class PlayerControls extends LitElement {
   // The camera has pan and tilt, and whether its pad is open.
   declare ptz: boolean;
   declare ptzOpen: boolean;
+  // The card returns to its default camera when idle; a pin stops that.
+  declare pinnable: boolean;
+  declare pinned: boolean;
   declare dragging: number | undefined;
 
   constructor() {
@@ -83,6 +89,18 @@ export class PlayerControls extends LitElement {
     this.rewinding = false;
     this.ptz = false;
     this.ptzOpen = false;
+    this.pinnable = false;
+    this.pinned = false;
+  }
+
+  private pinButton() {
+    if (!this.pinnable) return nothing;
+    return this.button(
+      this.pinned ? "mdi:pin" : "mdi:pin-outline",
+      this.pinned ? "Stop staying on this camera" : "Stay on this camera",
+      { action: "pin" },
+      this.pinned ? "on" : "",
+    );
   }
 
   private send(detail: ControlAction): void {
@@ -143,13 +161,13 @@ export class PlayerControls extends LitElement {
               @click=${(event: Event) => event.stopPropagation()}
             >
               <ha-icon icon=${talk.active ? "mdi:microphone" : "mdi:microphone-outline"}></ha-icon>
-              <span>Hold to talk</span>
             </button>`
           : nothing}
         ${this.ptz
           ? this.button("mdi:arrow-all", this.ptzOpen ? "Close pan and tilt" : "Pan and tilt", { action: "ptz" }, this.ptzOpen ? "on" : "")
           : nothing}
         <span class="spacer"></span>
+        ${this.pinButton()}
         ${this.button("mdi:history", this.rewinding ? "Close timeline" : "Rewind", { action: "rewind" }, this.rewinding ? "on" : "")}
         ${this.button(this.fullscreen ? "mdi:fullscreen-exit" : "mdi:fullscreen", "Full screen", { action: "fullscreen" })}
       </div>
@@ -205,6 +223,7 @@ export class PlayerControls extends LitElement {
               `timeline-toggle ${this.rewinding ? "on" : ""}`,
             )
           : nothing}
+        ${this.pinButton()}
         ${this.button(this.fullscreen ? "mdi:fullscreen-exit" : "mdi:fullscreen", "Full screen", { action: "fullscreen" })}
         ${this.mode === "playback"
           ? html`<button

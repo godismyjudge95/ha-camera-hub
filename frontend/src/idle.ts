@@ -2,6 +2,7 @@
 export class IdleTimer {
   private timer?: ReturnType<typeof setTimeout>;
   private timeoutMs = 0;
+  private held = false;
 
   constructor(private readonly onIdle: () => void) {}
 
@@ -13,7 +14,13 @@ export class IdleTimer {
 
   restart(): void {
     clearTimeout(this.timer);
-    if (this.timeoutMs > 0) this.timer = setTimeout(this.onIdle, this.timeoutMs);
+    if (this.timeoutMs > 0 && !this.held) this.timer = setTimeout(this.onIdle, this.timeoutMs);
+  }
+
+  // While held, the timer does not run: the user pinned the camera on screen.
+  hold(held: boolean): void {
+    this.held = held;
+    this.restart();
   }
 
   stop(): void {
