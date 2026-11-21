@@ -23,6 +23,9 @@ class CameraInfo:
     # Frigate's extra live streams (for example transcodes) can start only on
     # demand and take much longer.
     stream: str
+    # A smaller go2rtc stream of the same camera (Frigate's detect stream),
+    # for devices that cannot decode the main stream. None if there is none.
+    fallback_stream: str | None
     # The stream has a go2rtc backchannel, so the card can send microphone
     # audio to the camera's speaker.
     talk: bool
@@ -37,6 +40,7 @@ class CameraInfo:
             "frigate_name": self.frigate_name,
             "instance_id": self.instance_id,
             "stream": self.stream,
+            "fallback_stream": self.fallback_stream,
             "talk": self.talk,
             "ptz": self.ptz,
         }
@@ -58,6 +62,7 @@ def get_camera_info(hass: HomeAssistant, entity_id: str) -> CameraInfo | None:
         frigate_name=frigate_name,
         instance_id=instance_id,
         stream=frigate_name,
+        fallback_stream=_fallback_stream(config, frigate_name),
         talk=_has_backchannel(config, frigate_name),
         ptz=_has_onvif(config, frigate_name),
     )
@@ -89,6 +94,29 @@ def frigate_topic_prefix(hass: HomeAssistant) -> str:
             if isinstance(prefix, str) and prefix:
                 return prefix
     return FRIGATE_DOMAIN
+
+
+def _fallback_stream(config: dict[str, Any], camera: str) -> str | None:
+    """Return the camera's detect stream, if go2rtc has it.
+
+    Frigate's `live.streams` names it "Detect" in many setups; otherwise the
+    restream that the camera's detect input reads is used.
+    """
+    streams = (config.get("go2rtc") or {}).get("streams") or {}
+    camera_config = (config.get("cameras") or {}).get(camera) or {}
+    candidates: list[str] = []
+    live = (camera_config.get("live") or {}).get("streams") or {}
+    if isinstance(live, dict) and isinstance(live.get("Detect"), str):
+        candidates.append(live["Detect"])
+    for source in (camera_config.get("ffmpeg") or {}).get("inputs") or []:
+        if isinstance(source, dict) and "detect" in (source.get("roles") or []):
+            path = str(source.get("path", ""))
+            if "127.0.0.1:8554/" in path:
+                candidates.append(path.split("127.0.0.1:8554/", 1)[1].split("?", 1)[0])
+    for candidate in candidates:
+        if candidate != camera and candidate in streams:
+            return candidate
+    return None
 
 
 def _has_backchannel(config: dict[str, Any], stream: str) -> bool:

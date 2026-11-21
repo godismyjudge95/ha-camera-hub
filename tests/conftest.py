@@ -48,10 +48,30 @@ def frigate_cameras(hass: HomeAssistant) -> None:
                             "rtsp://user:secret@10.0.0.2:554/ch0",
                             "rtsp://user:secret@10.0.0.2:554/ch0#media=audio#backchannel=1",
                         ],
+                        "nursery_sub": ["rtsp://user:secret@10.0.0.2:554/ch1"],
                         "porch": ["rtsp://user:secret@10.0.0.3:554/main"],
+                        "porch_sub": ["rtsp://user:secret@10.0.0.3:554/sub"],
                     }
                 },
-                "cameras": {"nursery": {"onvif": {"host": "10.0.0.2"}}, "porch": {}},
+                # The nursery names its detect stream in `live.streams`; the
+                # porch only reads it as its detect input.
+                "cameras": {
+                    "nursery": {
+                        "onvif": {"host": "10.0.0.2"},
+                        "live": {"streams": {"Recording": "nursery", "Detect": "nursery_sub"}},
+                    },
+                    "porch": {
+                        "ffmpeg": {
+                            "inputs": [
+                                {"path": "rtsp://127.0.0.1:8554/porch", "roles": ["record"]},
+                                {
+                                    "path": "rtsp://127.0.0.1:8554/porch_sub?video=copy",
+                                    "roles": ["detect"],
+                                },
+                            ]
+                        }
+                    },
+                },
             }
         }
     }

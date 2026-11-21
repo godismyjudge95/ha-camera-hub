@@ -9,8 +9,13 @@ notifications for Frigate's person alerts.
   camera in the large view.
 - Recent alerts with filters. A tap plays the clip in a large player.
 - Rewind: a vertical timeline of all the camera's recordings, with its alerts
-  and detections marked. Scroll it to play any time, or tap a day to go to
-  that day. On a tablet it replaces the tiles; the rewind button opens it.
+  and detections marked. Scroll it to look for activity; scrolling does not
+  change the video. Tap a time or a mark to play from there, and drag the red
+  play line to scrub. The day buttons scroll to a day. On a tablet the
+  timeline replaces the tiles; the rewind button opens it.
+- Live video plays the camera's main stream. If a device cannot decode it
+  (for example an older tablet and a 2304x1296 stream), the card plays the
+  camera's detect stream instead.
 - Push to talk, and pan and tilt.
 - Pauses of the notifications, per zone.
 - A doorbell screen over every card when the doorbell rings or a person comes

@@ -9,6 +9,11 @@
 //
 // A mode counts only when a frame plays. A connection that delivers no
 // picture within FIRST_FRAME_MS makes the player try the next mode.
+//
+// Some devices cannot decode a camera's main stream (for example an older
+// tablet and a 2304x1296 stream). If the main stream fails, the player tries
+// the camera's smaller fallback stream and remembers, until the page
+// reloads, to start that camera on the fallback stream.
 
 import { getIceServers } from "../api/ha";
 import type { HomeAssistant } from "../ha-types";
@@ -36,9 +41,16 @@ const MODES: PlayerMode[] = ["mse", "webrtc"];
 const WEBRTC_TIMEOUT_MS = 5000;
 const FIRST_FRAME_MS = 6000;
 const MAX_RETRY_MS = 30_000;
+// The reason a session gives when the browser cannot decode the stream.
+// Another mode cannot help then, so the player goes to the fallback stream.
+const DECODE_ERROR = "This device cannot decode the stream";
+
+// Main streams that failed on this device and the fallback that played.
+const undecodable = new Set<string>();
 
 export class LivePlayer {
   private source?: StreamSource;
+  private fallbackStream?: string;
   private session?: Session;
   private retryTimer?: ReturnType<typeof setTimeout>;
   private attempt = 0;
@@ -62,9 +74,10 @@ export class LivePlayer {
     });
   }
 
-  play(source: StreamSource): void {
+  play(source: StreamSource, fallbackStream?: string | null): void {
     this.stop();
     this.source = source;
+    this.fallbackStream = fallbackStream ?? undefined;
     this.attempt = 0;
     void this.connect();
   }
@@ -85,28 +98,52 @@ export class LivePlayer {
     const onEnded = (reason: string) => {
       if (isCurrent()) this.retry(reason);
     };
+    // While a session starts, its failure ends the wait for the first frame
+    // instead of starting a retry.
+    let startFailed: ((reason: string) => void) | undefined;
+    const sessionEnded = (reason: string) => {
+      if (startFailed) startFailed(reason);
+      else onEnded(reason);
+    };
+
+    const fallback = this.fallbackStream;
+    const streams = fallback && undecodable.has(source.stream) ? [fallback] : [source.stream];
+    if (fallback && !streams.includes(fallback)) streams.push(fallback);
 
     this.onStatus({ state: "connecting" });
     let reason = "No video arrived";
-    for (const mode of MODES) {
-      let session: Session;
-      try {
-        session = await startSession(mode, this.getHass(), source, this.video, onEnded);
-      } catch (error) {
+    for (const stream of streams) {
+      for (const mode of MODES) {
+        let session: Session;
+        try {
+          session = await startSession(mode, this.getHass(), { ...source, stream }, this.video, sessionEnded);
+        } catch (error) {
+          if (!isCurrent()) return;
+          reason = errorMessage(error);
+          continue;
+        }
+        if (!isCurrent()) {
+          session.close();
+          return;
+        }
+        this.session = session;
+        const result = await new Promise<true | string>((resolve) => {
+          startFailed = resolve;
+          void waitForFirstFrame(this.video, FIRST_FRAME_MS).then((played) =>
+            resolve(played ? true : `No video arrived over ${mode.toUpperCase()}`),
+          );
+        });
+        startFailed = undefined;
         if (!isCurrent()) return;
-        reason = errorMessage(error);
-        continue;
-      }
-      if (!isCurrent()) {
+        if (result === true) {
+          if (stream !== source.stream) undecodable.add(source.stream);
+          return;
+        }
         session.close();
-        return;
+        this.session = undefined;
+        reason = result;
+        if (reason === DECODE_ERROR) break;
       }
-      this.session = session;
-      const played = await waitForFirstFrame(this.video, FIRST_FRAME_MS);
-      if (!isCurrent() || played) return;
-      session.close();
-      this.session = undefined;
-      reason = `No video arrived over ${mode.toUpperCase()}`;
     }
     onEnded(reason);
   }
@@ -223,9 +260,13 @@ async function startMse(
   video.src = objectUrl;
 
   let closed = false;
+  const onVideoError = () => ended(DECODE_ERROR);
+  const onSourceClose = () => ended(DECODE_ERROR);
   const close = () => {
     closed = true;
     ws.close();
+    video.removeEventListener("error", onVideoError);
+    mediaSource.removeEventListener("sourceclose", onSourceClose);
     video.removeAttribute("src");
     video.load();
     URL.revokeObjectURL(objectUrl);
@@ -236,19 +277,31 @@ async function startMse(
       onEnded(reason);
     }
   };
+  // A decode error makes the browser close the media source. Stop then,
+  // instead of adding more data to it.
+  video.addEventListener("error", onVideoError);
 
   await new Promise((resolve) =>
     mediaSource.addEventListener("sourceopen", resolve, { once: true }),
   );
+  mediaSource.addEventListener("sourceclose", onSourceClose);
   send(ws, "mse", supportedCodecs((type) => MediaSourceType.isTypeSupported(type)));
 
   let buffer: SourceBuffer | undefined;
   const queue: ArrayBuffer[] = [];
   const pump = () => {
     if (!buffer || buffer.updating || closed) return;
+    if (mediaSource.readyState !== "open") {
+      ended(DECODE_ERROR);
+      return;
+    }
     const next = queue.shift();
     if (next) {
-      buffer.appendBuffer(next);
+      try {
+        buffer.appendBuffer(next);
+      } catch {
+        ended(DECODE_ERROR);
+      }
       return;
     }
     if (buffer.buffered.length === 0) return;
@@ -265,6 +318,10 @@ async function startMse(
     if (typeof event.data === "string") {
       const message = JSON.parse(event.data) as { type: string; value: string };
       if (message.type === "mse") {
+        if (!MediaSourceType.isTypeSupported(message.value)) {
+          ended(DECODE_ERROR);
+          return;
+        }
         buffer = mediaSource.addSourceBuffer(message.value);
         buffer.mode = "segments";
         buffer.addEventListener("updateend", pump);

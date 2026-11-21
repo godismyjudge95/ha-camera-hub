@@ -36,6 +36,9 @@ export interface HubCamera {
   instance_id: string;
   // The go2rtc stream to play.
   stream: string;
+  // A smaller stream of the same camera for devices that cannot decode the
+  // main stream, or null.
+  fallback_stream: string | null;
   // The stream can send microphone audio to the camera's speaker.
   talk: boolean;
   // Frigate can pan and tilt the camera.

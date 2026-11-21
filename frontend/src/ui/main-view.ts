@@ -230,7 +230,7 @@ export class MainView extends LitElement {
     const source = this.source();
     if (!source || document.hidden) return;
     this.target = this.shown;
-    this.players[this.target]?.play(source);
+    this.players[this.target]?.play(source, this.camera?.fallback_stream);
   }
 
   // Start the new camera on the hidden element, if a camera is on screen.
@@ -242,7 +242,7 @@ export class MainView extends LitElement {
       return;
     }
     this.target = this.shown === 0 ? 1 : 0;
-    this.players[this.target]?.play(source);
+    this.players[this.target]?.play(source, this.camera?.fallback_stream);
   }
 
   private stopLive(): void {
@@ -289,7 +289,23 @@ export class MainView extends LitElement {
 
   // Plays the camera's recording from `time` (epoch seconds).
   playRecording(time: number): void {
-    this.rewindTo(time);
+    if (!this.seekInWindow(time)) this.rewindTo(time);
+  }
+
+  // Shows `time` while the user drags the timeline's play line. It only
+  // seeks inside the loaded recording; a time outside it waits for the
+  // drag to end.
+  previewRecording(time: number): void {
+    this.seekInWindow(time);
+  }
+
+  private seekInWindow(time: number): boolean {
+    const playback = this.playback;
+    const video = this.vodVideo;
+    if (!playback || !video || this.vodState !== "ready") return false;
+    if (time < playback.windowStart || time > playback.windowEnd - 5) return false;
+    video.currentTime = time - playback.windowStart;
+    return true;
   }
 
   // Tells the card which time plays, or null for live, so the timeline can

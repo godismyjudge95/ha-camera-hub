@@ -133,6 +133,10 @@ export class CameraHubCard extends LitElement {
       if (time === null) main?.goLive();
       else main?.playRecording(time);
     });
+    this.addEventListener("timeline-scrub", (event) => {
+      const main = this.renderRoot.querySelector<MainView>("camera-hub-main-view");
+      main?.previewRecording((event as CustomEvent<number>).detail);
+    });
   }
 
   setConfig(config: CardConfig): void {

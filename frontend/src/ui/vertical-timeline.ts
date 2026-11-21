@@ -16,25 +16,29 @@ import {
   timeAt,
 } from "../timeline-math";
 
-// The play position line, measured from the top of the timeline.
-const PLAYHEAD = 64;
+// Space above "now" at the top of the timeline.
+const TOP = 28;
 const ZOOMS = [30, 60, 120, 240, 480];
 const DEFAULT_ZOOM = 120;
-// After a scroll stops, the timeline waits this long before it seeks.
-const SEEK_DELAY_MS = 400;
-// A user who touches or scrolls the timeline keeps it from following the
-// playing video for this long.
-const HOLD_MS = 2500;
+// While the user drags the play line, the video follows at most this often.
+const SCRUB_INTERVAL_MS = 250;
 // Times this close to now count as live.
 const LIVE_SECONDS = 20;
 // Extra pixels drawn above and below the visible part.
 const OVERSCAN = 800;
+// A drag near the top or bottom edge scrolls the timeline by this much.
+const EDGE = 48;
+const EDGE_STEP = 14;
 
 // A vertical timeline of one camera's recordings, newest at the top, as far
-// back as Frigate has recordings. Scrolling it under the play position line
-// picks a time; after the scroll stops it reports that time in a
-// `timeline-seek` event (epoch seconds, or null for live). While nobody
-// touches it, it follows the playing position.
+// back as Frigate has recordings.
+// - Scrolling only browses; it never changes what plays.
+// - A tap plays from the tapped time (`timeline-seek`, epoch seconds or null
+//   for live). A tap on an alert or detection plays that event.
+// - Dragging the red play line scrubs: `timeline-scrub` while it moves and
+//   `timeline-seek` when it is let go.
+// The play line sits at the playing time and moves with it. The timeline
+// scrolls to keep it in view, until the user scrolls away to browse.
 export class VerticalTimeline extends LitElement {
   static override properties = {
     hass: { attribute: false },
@@ -45,7 +49,8 @@ export class VerticalTimeline extends LitElement {
     pixelsPerHour: { state: true },
     now: { state: true },
     view: { state: true },
-    label: { state: true },
+    dragTime: { state: true },
+    visibleDay: { state: true },
   };
 
   declare hass: HomeAssistant;
@@ -59,14 +64,18 @@ export class VerticalTimeline extends LitElement {
   declare now: number;
   // The visible part, as offsets from the top.
   declare view: [number, number];
-  // The time under the play position line while the user scrolls.
-  declare label: number | null;
+  // The time under the play line while the user drags it.
+  declare dragTime: number | null;
+  // The local day at the top of the visible part.
+  declare visibleDay: string;
 
   private readonly loadingDays = new Set<string>();
-  private holdUntil = 0;
-  private seekTimer?: ReturnType<typeof setTimeout>;
-  private clockTimer?: ReturnType<typeof setInterval>;
+  // True after the user scrolls away; the timeline then stops following
+  // playback until the next tap or drag.
+  private browsing = false;
   private ignoreScroll = false;
+  private lastScrub = 0;
+  private clockTimer?: ReturnType<typeof setInterval>;
 
   constructor() {
     super();
@@ -76,7 +85,8 @@ export class VerticalTimeline extends LitElement {
     this.pixelsPerHour = DEFAULT_ZOOM;
     this.now = Date.now() / 1000;
     this.view = [0, 2000];
-    this.label = null;
+    this.dragTime = null;
+    this.visibleDay = localDay(this.now);
   }
 
   private get viewport(): HTMLElement | null {
@@ -92,6 +102,17 @@ export class VerticalTimeline extends LitElement {
     return last ? localTime(last.day) : this.now - 86_400;
   }
 
+  // The position of a time inside the scrolled content.
+  private y(time: number): number {
+    return TOP + offsetOf(this.scale, time);
+  }
+
+  // The time at a position inside the scrolled content, kept between the
+  // oldest recording and now.
+  private timeAtY(y: number): number {
+    return Math.min(this.now, Math.max(this.oldest, timeAt(this.scale, y - TOP)));
+  }
+
   override connectedCallback(): void {
     super.connectedCallback();
     this.clockTimer = setInterval(() => (this.now = Date.now() / 1000), 30_000);
@@ -100,7 +121,6 @@ export class VerticalTimeline extends LitElement {
   override disconnectedCallback(): void {
     super.disconnectedCallback();
     clearInterval(this.clockTimer);
-    clearTimeout(this.seekTimer);
   }
 
   override willUpdate(changed: PropertyValues<this>): void {
@@ -109,6 +129,7 @@ export class VerticalTimeline extends LitElement {
       this.days = [];
       this.reviews = new Map();
       this.loadingDays.clear();
+      this.browsing = false;
       void this.loadSummary();
     }
   }
@@ -139,7 +160,7 @@ export class VerticalTimeline extends LitElement {
   private loadVisibleReviews(): void {
     const camera = this.camera;
     if (!camera) return;
-    const newest = timeAt(this.scale, Math.max(0, this.view[0] - PLAYHEAD));
+    const newest = timeAt(this.scale, Math.max(0, this.view[0] - TOP));
     const oldest = timeAt(this.scale, this.view[1]);
     for (let time = newest; time >= oldest - 86_400; time -= 86_400) {
       const day = localDay(time);
@@ -156,17 +177,24 @@ export class VerticalTimeline extends LitElement {
     }
   }
 
-  // Keeps the playing time under the play position line, unless the user
-  // is moving the timeline.
-  private follow(): void {
+  private scrollToY(top: number): void {
     const viewport = this.viewport;
-    if (!viewport || Date.now() < this.holdUntil) return;
-    const target = this.position === null ? 0 : offsetOf(this.scale, this.position);
-    if (Math.abs(viewport.scrollTop - target) < 1) return;
+    if (!viewport) return;
     this.ignoreScroll = true;
-    viewport.scrollTop = target;
+    viewport.scrollTop = Math.max(0, top);
     requestAnimationFrame(() => (this.ignoreScroll = false));
     this.updateView();
+  }
+
+  // Keeps the play line in view while the user is not browsing.
+  private follow(): void {
+    const viewport = this.viewport;
+    if (!viewport || this.browsing || this.dragTime !== null) return;
+    const line = this.y(this.position ?? this.now);
+    const top = viewport.scrollTop;
+    const bottom = top + viewport.clientHeight;
+    if (line >= top + EDGE && line <= bottom - EDGE) return;
+    this.scrollToY(line - viewport.clientHeight / 3);
   }
 
   private updateView(): void {
@@ -177,44 +205,72 @@ export class VerticalTimeline extends LitElement {
     if (Math.abs(from - this.view[0]) > OVERSCAN / 2 || Math.abs(to - this.view[1]) > OVERSCAN / 2) {
       this.view = [from, to];
     }
+    const day = localDay(this.timeAtY(viewport.scrollTop + TOP));
+    if (day !== this.visibleDay) this.visibleDay = day;
   }
 
   private onScroll(): void {
     this.updateView();
-    if (this.ignoreScroll) return;
-    this.holdUntil = Date.now() + HOLD_MS;
-    const time = timeAt(this.scale, this.viewport!.scrollTop);
-    this.label = time;
-    clearTimeout(this.seekTimer);
-    this.seekTimer = setTimeout(() => this.seek(time), SEEK_DELAY_MS);
+    if (!this.ignoreScroll && this.dragTime === null) this.browsing = true;
   }
 
+  // Plays from `time`; times close to now play live.
   private seek(time: number): void {
-    this.label = null;
+    this.browsing = false;
     const live = time >= Date.now() / 1000 - LIVE_SECONDS;
     this.dispatchEvent(
-      new CustomEvent("timeline-seek", {
-        detail: live ? null : Math.max(time, this.oldest),
-        bubbles: true,
-        composed: true,
-      }),
+      new CustomEvent("timeline-seek", { detail: live ? null : time, bubbles: true, composed: true }),
     );
   }
 
-  private jumpTo(time: number): void {
-    const viewport = this.viewport;
-    if (!viewport) return;
-    this.ignoreScroll = true;
-    viewport.scrollTop = offsetOf(this.scale, time);
-    requestAnimationFrame(() => (this.ignoreScroll = false));
-    this.holdUntil = Date.now() + HOLD_MS;
-    this.updateView();
+  private contentY(event: PointerEvent | MouseEvent): number {
+    const content = this.renderRoot.querySelector<HTMLElement>(".content")!;
+    return event.clientY - content.getBoundingClientRect().top;
+  }
+
+  // A tap (not a scroll) on the timeline plays from the tapped time.
+  private onTap(event: MouseEvent): void {
+    this.seek(this.timeAtY(this.contentY(event)));
+  }
+
+  private onMarkTap(event: Event, review: Review): void {
+    event.stopPropagation();
+    this.seek(Math.max(this.oldest, review.start_time - 2));
+  }
+
+  private onDragStart(event: PointerEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
+    (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+    this.browsing = false;
+    this.dragTime = this.timeAtY(this.contentY(event));
+  }
+
+  private onDragMove(event: PointerEvent): void {
+    if (this.dragTime === null) return;
+    const viewport = this.viewport!;
+    const box = viewport.getBoundingClientRect();
+    if (event.clientY < box.top + EDGE) viewport.scrollTop -= EDGE_STEP;
+    else if (event.clientY > box.bottom - EDGE) viewport.scrollTop += EDGE_STEP;
+    const time = this.timeAtY(this.contentY(event));
+    this.dragTime = time;
+    if (Date.now() - this.lastScrub < SCRUB_INTERVAL_MS) return;
+    this.lastScrub = Date.now();
+    this.dispatchEvent(new CustomEvent("timeline-scrub", { detail: time, bubbles: true, composed: true }));
+  }
+
+  private onDragEnd(): void {
+    const time = this.dragTime;
+    if (time === null) return;
+    this.dragTime = null;
     this.seek(time);
   }
 
-  private jumpToDay(day: RecordingDay): void {
+  // Scrolls to the newest recording of a day. It does not change what plays.
+  private showDay(day: RecordingDay): void {
     const latest = day.hours.length ? localTime(day.day, day.hours.at(-1)! + 1) : localTime(day.day) + 86_399;
-    this.jumpTo(Math.min(latest - 60, this.now));
+    this.browsing = true;
+    this.scrollToY(this.y(Math.min(latest, this.now)) - TOP);
   }
 
   private zoom(step: number): void {
@@ -222,15 +278,12 @@ export class VerticalTimeline extends LitElement {
     const next = ZOOMS[Math.min(ZOOMS.length - 1, Math.max(0, index + step))];
     if (next === this.pixelsPerHour) return;
     const viewport = this.viewport;
-    const time = viewport ? timeAt(this.scale, viewport.scrollTop) : this.now;
+    if (!viewport) return;
+    // Keep the time in the middle of the view in place.
+    const middle = viewport.clientHeight / 2;
+    const time = this.timeAtY(viewport.scrollTop + middle);
     this.pixelsPerHour = next;
-    void this.updateComplete.then(() => {
-      if (!this.viewport) return;
-      this.ignoreScroll = true;
-      this.viewport.scrollTop = offsetOf(this.scale, time);
-      requestAnimationFrame(() => (this.ignoreScroll = false));
-      this.updateView();
-    });
+    void this.updateComplete.then(() => this.scrollToY(this.y(time) - middle));
   }
 
   private dayLabel(day: string): string {
@@ -254,12 +307,13 @@ export class VerticalTimeline extends LitElement {
   override render() {
     const scale = this.scale;
     const [from, to] = this.view;
-    const visibleNewest = timeAt(scale, Math.max(0, from - PLAYHEAD));
+    const visibleNewest = timeAt(scale, Math.max(0, from - TOP));
     const visibleOldest = timeAt(scale, to);
-    const y = (time: number) => PLAYHEAD + offsetOf(scale, time);
+    const y = (time: number) => this.y(time);
     const height = y(this.oldest) + 600;
-    const shown = this.label ?? this.position;
-    const currentDay = localDay(shown ?? this.now);
+    const shown = this.dragTime ?? this.position;
+    const live = shown === null;
+    const line = y(shown ?? this.now);
 
     const ranges = recordedRanges(this.days).filter(
       ([start, end]) => end >= visibleOldest && start <= visibleNewest,
@@ -274,8 +328,8 @@ export class VerticalTimeline extends LitElement {
         <div class="days">
           ${this.days.map(
             (day) => html`<button
-              class="day ${day.day === currentDay ? "on" : ""}"
-              @click=${() => this.jumpToDay(day)}
+              class="day ${day.day === this.visibleDay ? "on" : ""}"
+              @click=${() => this.showDay(day)}
             >
               ${this.dayLabel(day.day)}
             </button>`,
@@ -291,12 +345,9 @@ export class VerticalTimeline extends LitElement {
         </div>
       </div>
       <div class="box">
-        <div
-          class="viewport"
-          @scroll=${this.onScroll}
-          @pointerdown=${() => (this.holdUntil = Date.now() + HOLD_MS)}
-        >
-          <div class="content" style="height: ${height}px">
+        <div class="viewport" @scroll=${this.onScroll}>
+          <div class="content" style="height: ${height}px" @click=${this.onTap}>
+            <div class="now" style="top: ${y(this.now)}px"><span>Now</span></div>
             ${ranges.map(
               ([start, end]) =>
                 html`<div
@@ -321,15 +372,25 @@ export class VerticalTimeline extends LitElement {
                 class="mark ${review.severity}"
                 style="top: ${top}px; height: ${size}px"
                 title=${`${reviewLabel(review)} · ${this.clock(review.start_time)}`}
-                @click=${() => this.jumpTo(review.start_time - 2)}
+                @click=${(event: Event) => this.onMarkTap(event, review)}
               ></button>`;
             })}
+            <div
+              class="playhead ${this.dragTime !== null ? "dragging" : ""}"
+              style="top: ${line}px"
+              @pointerdown=${this.onDragStart}
+              @pointermove=${this.onDragMove}
+              @pointerup=${this.onDragEnd}
+              @pointercancel=${this.onDragEnd}
+              @click=${(event: Event) => event.stopPropagation()}
+            >
+              <div class="line"></div>
+              <span class="pill ${live ? "live" : ""}">
+                <ha-icon icon="mdi:drag-vertical"></ha-icon>
+                ${live ? "Live" : `${this.dayLabel(localDay(shown))} · ${this.clock(shown, true)}`}
+              </span>
+            </div>
           </div>
-        </div>
-        <div class="playhead" style="top: ${PLAYHEAD}px">
-          <span class="pill ${shown === null ? "live" : ""}">
-            ${shown === null ? "Live" : `${this.dayLabel(localDay(shown))} · ${this.clock(shown, true)}`}
-          </span>
         </div>
         ${this.days.length === 0 ? html`<div class="empty">Loading recordings…</div>` : nothing}
       </div>
@@ -456,20 +517,55 @@ export class VerticalTimeline extends LitElement {
         width: 14px;
         background: rgba(255, 176, 32, 0.45);
       }
+      .now {
+        position: absolute;
+        left: 0;
+        right: 0;
+        height: 0;
+        border-top: 1px dashed rgba(255, 255, 255, 0.35);
+      }
+      .now span {
+        position: absolute;
+        top: -9px;
+        left: 10px;
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--ch-text);
+        background: var(--ch-surface);
+        padding-right: 6px;
+      }
+      /* The play line. Its grab area is taller than the line and stops the
+         drag from scrolling the timeline. */
       .playhead {
         position: absolute;
         left: 0;
         right: 0;
+        height: 40px;
+        margin-top: -20px;
+        z-index: 2;
+        cursor: grab;
+        touch-action: none;
+      }
+      .playhead.dragging {
+        cursor: grabbing;
+      }
+      .line {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 19px;
         height: 2px;
         background: var(--ch-red);
-        pointer-events: none;
         box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4);
       }
       .pill {
         position: absolute;
-        right: 10px;
-        top: -14px;
-        padding: 4px 10px;
+        right: 8px;
+        top: 6px;
+        display: flex;
+        align-items: center;
+        gap: 2px;
+        padding: 4px 10px 4px 4px;
         border-radius: 999px;
         background: var(--ch-red);
         color: #fff;
@@ -477,6 +573,11 @@ export class VerticalTimeline extends LitElement {
         font-weight: 700;
         font-variant-numeric: tabular-nums;
         white-space: nowrap;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+        --mdc-icon-size: 18px;
+      }
+      .playhead.dragging .pill {
+        transform: scale(1.08);
       }
       .empty {
         position: absolute;
