@@ -14,6 +14,7 @@ import "./player-controls";
 import "./ptz-pad";
 import "./talk-banner";
 import "./timeline";
+import { errorMessage } from "../errors";
 
 const FADE_MS = 180;
 const CONTROLS_HIDE_MS = 4000;
@@ -287,7 +288,7 @@ export class MainView extends LitElement {
       },
       (error) => {
         this.vodState = "error";
-        this.vodMessage = (error as { message?: string }).message ?? String(error);
+        this.vodMessage = errorMessage(error);
       },
     );
   }

@@ -7,6 +7,7 @@ import { type Review, clipPlaylistPath, reviewLabel, thumbnailPath } from "../re
 import { spinnerStyles, tokens } from "../styles";
 import type { ControlAction } from "./player-controls";
 import "./player-controls";
+import { errorMessage } from "../errors";
 
 // A large player for one alert. It starts playing at once, without sound.
 export class ClipModal extends LitElement {
@@ -125,7 +126,7 @@ export class ClipModal extends LitElement {
       },
       (error) => {
         this.vodState = "error";
-        this.message = (error as { message?: string }).message ?? String(error);
+        this.message = errorMessage(error);
       },
     );
   }

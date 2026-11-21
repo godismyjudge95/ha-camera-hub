@@ -9,6 +9,7 @@
 import { getIceServers } from "../api/ha";
 import type { HomeAssistant } from "../ha-types";
 import { type StreamSource, negotiate, openSocket, waitForConnection } from "./go2rtc-socket";
+import { errorMessage } from "../errors";
 
 const CONNECT_TIMEOUT_MS = 8000;
 const IDLE_CLOSE_MS = 30_000;
@@ -153,5 +154,5 @@ function talkErrorMessage(error: unknown): string {
   const name = (error as { name?: string }).name;
   if (name === "NotAllowedError") return "Allow the microphone for Home Assistant to talk";
   if (name === "NotFoundError") return "No microphone found";
-  return error instanceof Error ? error.message : String(error);
+  return errorMessage(error);
 }

@@ -16,6 +16,7 @@ import { negotiate, openSocket, send, waitForConnection } from "./go2rtc-socket"
 import { liveEdgeAction, supportedCodecs } from "./mse";
 
 import type { StreamSource } from "./go2rtc-socket";
+import { errorMessage } from "../errors";
 
 export type { StreamSource } from "./go2rtc-socket";
 
@@ -93,7 +94,7 @@ export class LivePlayer {
         session = await startSession(mode, this.getHass(), source, this.video, onEnded);
       } catch (error) {
         if (!isCurrent()) return;
-        reason = error instanceof Error ? error.message : String(error);
+        reason = errorMessage(error);
         continue;
       }
       if (!isCurrent()) {

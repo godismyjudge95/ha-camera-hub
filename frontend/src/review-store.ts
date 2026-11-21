@@ -1,6 +1,7 @@
 import { getReviews, subscribeReviews } from "./api/frigate";
 import type { HomeAssistant } from "./ha-types";
 import { type Review, upsertReview } from "./reviews";
+import { errorMessage } from "./errors";
 
 const HOURS = 24;
 const LIMIT = 60;
@@ -35,7 +36,7 @@ export class ReviewStore {
         this.notify();
       },
       (error) => {
-        this.error = (error as { message?: string }).message ?? String(error);
+        this.error = errorMessage(error);
         this.notify();
       },
     );

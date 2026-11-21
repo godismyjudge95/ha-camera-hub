@@ -12,6 +12,7 @@ import "./ui/doorbell-overlay";
 import "./ui/main-view";
 import "./ui/pause-bar";
 import "./ui/tile-rail";
+import { errorMessage } from "./errors";
 
 declare const __CARD_VERSION__: string;
 
@@ -160,7 +161,7 @@ export class CameraHubCard extends LitElement {
       this.selectDefault();
       this.idle.setTimeout(config.return_after_seconds);
     } catch (error) {
-      const message = (error as { message?: string }).message ?? String(error);
+      const message = errorMessage(error);
       this.load = { state: "error", message };
     }
   }

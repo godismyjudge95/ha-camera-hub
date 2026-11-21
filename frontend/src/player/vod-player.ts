@@ -7,6 +7,7 @@
 
 import { type MediaPlaylist, parseMediaPlaylist, segmentIndexAt, segmentUrl } from "./hls";
 import { codecsFromInitSegment } from "./mp4-codecs";
+import { errorMessage } from "../errors";
 
 // How far ahead of the play position segments are loaded.
 const AHEAD_SECONDS = 30;
@@ -63,7 +64,7 @@ export class VodPlayer {
       void this.video.play().catch(() => undefined);
     } catch (error) {
       if (this.closed) return;
-      this.onState("error", error instanceof Error ? error.message : String(error));
+      this.onState("error", errorMessage(error));
     }
   }
 
@@ -96,7 +97,7 @@ export class VodPlayer {
       }
       await this.trim();
     } catch (error) {
-      if (!this.closed) this.onState("error", error instanceof Error ? error.message : String(error));
+      if (!this.closed) this.onState("error", errorMessage(error));
     } finally {
       this.loading = false;
     }
