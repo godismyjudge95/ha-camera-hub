@@ -121,3 +121,9 @@ async def test_the_card_gets_the_doorbell_camera_and_sensor(
 
     assert doorbell_config["camera"]["entity_id"] == "camera.porch"
     assert doorbell_config["active_entity"] == ACTIVE
+
+
+async def test_the_test_service_rings(hass: HomeAssistant, doorbell) -> None:
+    await hass.services.async_call("camera_hub", "test_doorbell", blocking=True)
+
+    assert hass.states.get(ACTIVE).attributes["trigger"] == "ring"

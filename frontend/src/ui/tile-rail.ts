@@ -12,6 +12,7 @@ export class TileRail extends LitElement {
     cameras: { attribute: false },
     selected: { attribute: false },
     refresh: { attribute: false },
+    alerting: { attribute: false },
   };
 
   declare hass: HomeAssistant;
@@ -19,11 +20,14 @@ export class TileRail extends LitElement {
   declare selected: string | undefined;
   // Changes when the images should be loaded again.
   declare refresh: number;
+  // Frigate names of the cameras with an alert going on now.
+  declare alerting: Set<string>;
 
   constructor() {
     super();
     this.cameras = [];
     this.refresh = 0;
+    this.alerting = new Set();
   }
 
   private select(entityId: string): void {
@@ -45,6 +49,9 @@ export class TileRail extends LitElement {
             >
               <span class="name">${camera.name}</span>
               <span class="image">
+                ${this.alerting.has(camera.frigate_name)
+                  ? html`<span class="alert" title="Alert now"><ha-icon icon="mdi:walk"></ha-icon></span>`
+                  : ""}
                 ${image
                   ? html`<img src=${image} alt="" loading="lazy" />`
                   : html`<span class="offline">${offline ? "Offline" : ""}</span>`}
@@ -116,6 +123,21 @@ export class TileRail extends LitElement {
         height: 100%;
         object-fit: cover;
         display: block;
+      }
+      .alert {
+        position: absolute;
+        top: 6px;
+        right: 6px;
+        z-index: 1;
+        display: grid;
+        place-items: center;
+        width: 26px;
+        height: 26px;
+        border-radius: 50%;
+        background: var(--ch-red);
+        color: #fff;
+        box-shadow: 0 0 0 3px rgba(255, 69, 58, 0.3);
+        --mdc-icon-size: 16px;
       }
       .offline {
         position: absolute;

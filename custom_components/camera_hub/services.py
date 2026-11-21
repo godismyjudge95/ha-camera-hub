@@ -10,11 +10,13 @@ from homeassistant.helpers import config_validation as cv
 import voluptuous as vol
 
 from .const import ALL_ZONES, DEFAULT_PAUSE_MINUTES, DOMAIN
+from .doorbell import TRIGGER_RING
 from .hub import CameraHubConfigEntry
 
 SERVICE_PAUSE_ZONE = "pause_zone"
 SERVICE_RESUME_ZONE = "resume_zone"
 SERVICE_DISMISS_DOORBELL = "dismiss_doorbell"
+SERVICE_TEST_DOORBELL = "test_doorbell"
 
 ZONE_SCHEMA = vol.Schema({vol.Required("zone"): cv.string})
 PAUSE_SCHEMA = ZONE_SCHEMA.extend(
@@ -59,6 +61,13 @@ def async_register_services(hass: HomeAssistant) -> None:
         if doorbell := entry().runtime_data.doorbell:
             doorbell.async_dismiss()
 
+    async def test_doorbell(call: ServiceCall) -> None:
+        doorbell = entry().runtime_data.doorbell
+        if doorbell is None:
+            raise ServiceValidationError("Camera Hub has no doorbell set up")
+        doorbell.async_trigger(TRIGGER_RING)
+
     hass.services.async_register(DOMAIN, SERVICE_PAUSE_ZONE, pause_zone, schema=PAUSE_SCHEMA)
     hass.services.async_register(DOMAIN, SERVICE_DISMISS_DOORBELL, dismiss_doorbell)
+    hass.services.async_register(DOMAIN, SERVICE_TEST_DOORBELL, test_doorbell)
     hass.services.async_register(DOMAIN, SERVICE_RESUME_ZONE, resume_zone, schema=ZONE_SCHEMA)

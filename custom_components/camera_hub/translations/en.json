@@ -121,6 +121,10 @@
     "dismiss_doorbell": {
       "name": "Dismiss doorbell",
       "description": "End the doorbell takeover on every Camera Hub card."
+    },
+    "test_doorbell": {
+      "name": "Test doorbell",
+      "description": "Show the doorbell on every Camera Hub card, and wake the wall tablet, as if the doorbell rang."
     }
   },
   "selector": {

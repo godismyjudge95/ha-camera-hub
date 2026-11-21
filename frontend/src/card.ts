@@ -16,6 +16,9 @@ import "./ui/tile-rail";
 declare const __CARD_VERSION__: string;
 
 const SNAPSHOT_REFRESH_MS = 10_000;
+// An always-on screen keeps its picture still for hours. Moving the layout by
+// a pixel or two now and then spreads the wear of static edges and text.
+const SHIFT_MS = 2 * 60_000;
 
 interface CardConfig {
   type: string;
@@ -54,6 +57,7 @@ export class CameraHubCard extends LitElement {
     snapshotRefresh: { state: true },
     openClip: { state: true },
     reviewsRevision: { state: true },
+    shift: { state: true },
   };
 
   declare hass: HomeAssistant;
@@ -67,11 +71,13 @@ export class CameraHubCard extends LitElement {
   declare openClip: Review | undefined;
   // Changes when the alert list changes, so the card renders again.
   declare reviewsRevision: number;
+  declare shift: [number, number];
 
   private cardConfig: CardConfig = { type: "custom:camera-hub-card" };
   private loadStarted = false;
   private readonly idle = new IdleTimer(() => this.selectDefault());
   private snapshotTimer?: ReturnType<typeof setInterval>;
+  private shiftTimer?: ReturnType<typeof setInterval>;
   private readonly reviewStore = new ReviewStore();
 
   constructor() {
@@ -79,6 +85,7 @@ export class CameraHubCard extends LitElement {
     this.load = { state: "loading" };
     this.snapshotRefresh = Date.now();
     this.reviewsRevision = 0;
+    this.shift = [0, 0];
     this.reviewStore.onChange(() => this.reviewsRevision++);
     // Any touch on the card counts as activity, also on controls that stop
     // the event from bubbling further.
@@ -108,12 +115,17 @@ export class CameraHubCard extends LitElement {
     document.addEventListener("visibilitychange", this.onVisibilityChange);
     this.refreshSnapshots();
     if (this.load.state === "ready") this.idle.restart();
+    this.shiftTimer = setInterval(() => {
+      const step = () => Math.round(Math.random() * 4) - 2;
+      this.shift = [step(), step()];
+    }, SHIFT_MS);
   }
 
   override disconnectedCallback(): void {
     super.disconnectedCallback();
     document.removeEventListener("visibilitychange", this.onVisibilityChange);
     clearInterval(this.snapshotTimer);
+    clearInterval(this.shiftTimer);
     this.idle.stop();
     this.reviewStore.stop();
     this.loadStarted = false;
@@ -191,7 +203,7 @@ export class CameraHubCard extends LitElement {
         : false;
     const main = cameras.find((camera) => camera.entity_id === this.selected);
     return html`
-      <div class="layout">
+      <div class="layout" style="translate: ${this.shift[0]}px ${this.shift[1]}px">
         <camera-hub-main-view
           .hass=${this.hass}
           .camera=${main}
@@ -203,6 +215,11 @@ export class CameraHubCard extends LitElement {
           .cameras=${cameras}
           .selected=${this.selected}
           .refresh=${this.snapshotRefresh}
+          .alerting=${new Set(
+            this.reviewStore.reviews
+              .filter((review) => review.end_time === null)
+              .map((review) => review.camera),
+          )}
         ></camera-hub-tile-rail>
         <camera-hub-pause-bar .hass=${this.hass} .zones=${this.load.config.zones ?? []}></camera-hub-pause-bar>
         <camera-hub-clips-strip
@@ -240,6 +257,7 @@ export class CameraHubCard extends LitElement {
         padding: var(--ch-gap);
       }
       .layout {
+        transition: translate 2s ease;
         display: grid;
         gap: calc(var(--ch-gap) * 1.5) var(--ch-gap);
         grid-template-columns: minmax(0, 1fr);
