@@ -4,55 +4,26 @@ import { isCameraOffline, snapshotUrl } from "../api/snapshot";
 import type { HomeAssistant, HubCamera } from "../ha-types";
 import { tokens } from "../styles";
 
-const REFRESH_MS = 10_000;
-
 // Small still images of every camera. A tap selects the camera for the main
-// view. The images refresh only while the page is visible.
+// view.
 export class TileRail extends LitElement {
   static override properties = {
     hass: { attribute: false },
     cameras: { attribute: false },
     selected: { attribute: false },
-    refresh: { state: true },
+    refresh: { attribute: false },
   };
 
   declare hass: HomeAssistant;
   declare cameras: HubCamera[];
   declare selected: string | undefined;
+  // Changes when the images should be loaded again.
   declare refresh: number;
-
-  private interval?: ReturnType<typeof setInterval>;
 
   constructor() {
     super();
     this.cameras = [];
-    this.refresh = Date.now();
-  }
-
-  private readonly onVisibilityChange = () => {
-    if (document.hidden) {
-      clearInterval(this.interval);
-    } else {
-      this.refresh = Date.now();
-      this.startRefreshing();
-    }
-  };
-
-  override connectedCallback(): void {
-    super.connectedCallback();
-    document.addEventListener("visibilitychange", this.onVisibilityChange);
-    this.startRefreshing();
-  }
-
-  override disconnectedCallback(): void {
-    super.disconnectedCallback();
-    document.removeEventListener("visibilitychange", this.onVisibilityChange);
-    clearInterval(this.interval);
-  }
-
-  private startRefreshing(): void {
-    clearInterval(this.interval);
-    this.interval = setInterval(() => (this.refresh = Date.now()), REFRESH_MS);
+    this.refresh = 0;
   }
 
   private select(entityId: string): void {

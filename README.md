@@ -4,7 +4,7 @@ A Home Assistant integration that gives [Frigate](https://frigate.video) cameras
 dashboard card for a wall tablet or a phone: a large live view, camera tiles,
 recent clips, a doorbell screen, and notification controls.
 
-**Status:** early development (0.0.x). The live view and the camera tiles work now.
+**Status:** early development. The live view, camera tiles and recent alerts work now.
 
 ## Requirements
 
@@ -30,11 +30,15 @@ The integration loads the card on every dashboard. You do not add a resource.
 
 ## How live video works
 
-The card plays go2rtc streams from Frigate through the Frigate integration's
-proxy in Home Assistant. It tries WebRTC first, with the ICE servers that Home
-Assistant provides (with Home Assistant Cloud, these include TURN relays, so
-WebRTC also works away from home). If WebRTC does not connect within 5 seconds,
-the card uses MSE over the same connection.
+The card plays each camera's go2rtc restream from Frigate through the Frigate
+integration's proxy in Home Assistant, so it also works away from home. It
+uses MSE first: MSE starts as fast as WebRTC and also plays high-level H.264
+streams (for example 2960x1668 at level 5.0) that browsers often do not decode
+over WebRTC. WebRTC, with the ICE servers Home Assistant provides (with Home
+Assistant Cloud these include TURN relays), is the second choice. A mode that
+shows no picture within 6 seconds makes the card try the other one.
+
+While a stream connects, the main view shows the camera's latest still.
 
 ## Development
 

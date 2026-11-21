@@ -9,19 +9,25 @@ const FADE_MS = 180;
 
 // The large live view of one camera.
 //
-// It has two video elements. A new camera starts on the hidden one, and the
-// view fades over when it plays. Until then the previous camera stays on
-// screen, so a camera change never shows a black frame.
+// A camera change shows the camera's latest still at once, from the same
+// URL the tiles use, so it comes from the browser cache. The stream starts on
+// a second, hidden video element. When it plays, that element comes to the
+// front and the still fades out. The previous camera never shows under the
+// new camera's name, and the view never goes black.
 export class MainView extends LitElement {
   static override properties = {
     hass: { attribute: false },
     camera: { attribute: false },
+    snapshotRefresh: { attribute: false },
     statuses: { state: true },
     shown: { state: true },
   };
 
   declare hass: HomeAssistant;
   declare camera: HubCamera | undefined;
+  // The tiles use the same value, so the snapshot comes from the browser
+  // cache and shows at once while the stream connects.
+  declare snapshotRefresh: number;
   // One status per video element.
   declare statuses: [PlayerStatus, PlayerStatus];
   // The video element on screen.
@@ -30,7 +36,6 @@ export class MainView extends LitElement {
   private players: LivePlayer[] = [];
   // The video element that plays the current camera.
   private target: 0 | 1 = 0;
-  private snapshotTime = Date.now();
 
   constructor() {
     super();
@@ -39,12 +44,8 @@ export class MainView extends LitElement {
   }
 
   private readonly onVisibilityChange = () => {
-    if (document.hidden) {
-      this.stopAll();
-    } else {
-      this.snapshotTime = Date.now();
-      this.start();
-    }
+    if (document.hidden) this.stopAll();
+    else this.start();
   };
 
   override connectedCallback(): void {
@@ -80,7 +81,6 @@ export class MainView extends LitElement {
       previous.entity_id !== this.camera?.entity_id &&
       this.players.length
     ) {
-      this.snapshotTime = Date.now();
       this.switchCamera();
     }
   }
@@ -135,16 +135,19 @@ export class MainView extends LitElement {
     const camera = this.camera;
     const status = this.statuses[this.target];
     const playing = status.state === "playing";
-    const anythingOnScreen = this.statuses[this.shown].state === "playing";
     const offline = camera ? isCameraOffline(this.hass, camera.entity_id) : false;
     const snapshot =
-      camera && !anythingOnScreen ? snapshotUrl(this.hass, camera.entity_id, this.snapshotTime) : undefined;
+      camera && !offline
+        ? snapshotUrl(this.hass, camera.entity_id, this.snapshotRefresh)
+        : undefined;
 
     return html`
       <div class="frame">
-        ${snapshot ? html`<img class="snapshot" src=${snapshot} alt="" />` : nothing}
         <video class=${this.shown === 0 ? "on" : ""} muted playsinline autoplay></video>
         <video class=${this.shown === 1 ? "on" : ""} muted playsinline autoplay></video>
+        ${snapshot
+          ? html`<img class="snapshot ${playing ? "faded" : ""}" src=${snapshot} alt="" />`
+          : nothing}
         <div class="shade top"></div>
         <div class="overlay top">
           <span class="live ${playing ? "on" : ""}">
@@ -159,7 +162,7 @@ export class MainView extends LitElement {
                 ${status.reason}. Trying again in ${status.inSeconds} s.
               </div>`
             : nothing}
-        ${!playing && !offline ? html`<div class="spinner"></div>` : nothing}
+        ${!playing && !offline ? html`<div class="spinner ${snapshot ? "corner" : ""}"></div>` : nothing}
       </div>
     `;
   }
@@ -186,16 +189,21 @@ export class MainView extends LitElement {
         object-fit: contain;
       }
       video {
-        opacity: 0;
-        transition: opacity ${FADE_MS}ms ease;
+        visibility: hidden;
       }
       video.on {
-        opacity: 1;
+        visibility: visible;
       }
+      /* Frigate's stills come from the detect stream, which can be a squeezed
+         copy of the 16:9 picture (for example 704x480). Stretching it to the
+         frame matches the live video. */
       .snapshot {
-        object-fit: cover;
-        filter: blur(8px) brightness(0.6);
-        transform: scale(1.05);
+        object-fit: fill;
+        background: #000;
+        transition: opacity ${FADE_MS}ms ease;
+      }
+      .snapshot.faded {
+        opacity: 0;
       }
       .shade.top {
         position: absolute;
@@ -256,6 +264,16 @@ export class MainView extends LitElement {
         border-top-color: var(--ch-text);
         border-radius: 50%;
         animation: spin 0.9s linear infinite;
+      }
+      /* Over a snapshot the spinner moves out of the way. */
+      .spinner.corner {
+        top: 18px;
+        left: auto;
+        right: 18px;
+        width: 22px;
+        height: 22px;
+        margin: 0;
+        border-width: 2px;
       }
       @keyframes spin {
         to {

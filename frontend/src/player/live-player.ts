@@ -2,9 +2,13 @@
 //
 // The Frigate integration proxies go2rtc's websocket API, so the card never
 // talks to Frigate directly and works both at home and through Home Assistant
-// Cloud. WebRTC is tried first, with the ICE servers (and TURN relays) that
-// Home Assistant provides. If WebRTC does not connect in time, the player uses
-// MSE over the same proxied websocket.
+// Cloud. MSE is tried first: in tests it started as fast as WebRTC, and it
+// also plays high-level H.264 streams (for example 2960x1668 at level 5.0)
+// that browsers often do not decode over WebRTC. WebRTC, with the ICE servers
+// and TURN relays that Home Assistant provides, is the second choice.
+//
+// A mode counts only when a frame plays. A connection that delivers no
+// picture within FIRST_FRAME_MS makes the player try the next mode.
 
 import { getIceServers, signPath } from "../api/ha";
 import type { HomeAssistant } from "../ha-types";
@@ -29,7 +33,9 @@ interface Session {
   close(): void;
 }
 
+const MODES: PlayerMode[] = ["mse", "webrtc"];
 const WEBRTC_TIMEOUT_MS = 5000;
+const FIRST_FRAME_MS = 6000;
 const MAX_RETRY_MS = 30_000;
 
 export class LivePlayer {
@@ -82,22 +88,28 @@ export class LivePlayer {
     };
 
     this.onStatus({ state: "connecting" });
-    try {
+    let reason = "No video arrived";
+    for (const mode of MODES) {
       let session: Session;
       try {
-        session = await startWebRtc(this.getHass(), source, this.video, onEnded);
-      } catch {
+        session = await startSession(mode, this.getHass(), source, this.video, onEnded);
+      } catch (error) {
         if (!isCurrent()) return;
-        session = await startMse(this.getHass(), source, this.video, onEnded);
+        reason = error instanceof Error ? error.message : String(error);
+        continue;
       }
       if (!isCurrent()) {
         session.close();
         return;
       }
       this.session = session;
-    } catch (error) {
-      onEnded(error instanceof Error ? error.message : String(error));
+      const played = await waitForFirstFrame(this.video, FIRST_FRAME_MS);
+      if (!isCurrent() || played) return;
+      session.close();
+      this.session = undefined;
+      reason = `No video arrived over ${mode.toUpperCase()}`;
     }
+    onEnded(reason);
   }
 
   private retry(reason: string): void {
@@ -107,6 +119,34 @@ export class LivePlayer {
     this.onStatus({ state: "retrying", inSeconds: Math.round(delay / 1000), reason });
     this.retryTimer = setTimeout(() => void this.connect(), delay);
   }
+}
+
+function startSession(
+  mode: PlayerMode,
+  hass: HomeAssistant,
+  source: StreamSource,
+  video: HTMLVideoElement,
+  onEnded: (reason: string) => void,
+): Promise<Session> {
+  return mode === "mse"
+    ? startMse(hass, source, video, onEnded)
+    : startWebRtc(hass, source, video, onEnded);
+}
+
+function waitForFirstFrame(video: HTMLVideoElement, timeoutMs: number): Promise<boolean> {
+  if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && !video.paused) {
+    return Promise.resolve(true);
+  }
+  return new Promise((resolve) => {
+    const done = (played: boolean) => {
+      clearTimeout(timer);
+      video.removeEventListener("playing", onPlaying);
+      resolve(played);
+    };
+    const onPlaying = () => done(true);
+    const timer = setTimeout(() => done(false), timeoutMs);
+    video.addEventListener("playing", onPlaying);
+  });
 }
 
 async function openSocket(hass: HomeAssistant, source: StreamSource): Promise<WebSocket> {
