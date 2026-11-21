@@ -6,7 +6,11 @@
         "description": "Pick the Frigate cameras to show, and the camera the main view shows by default.",
         "data": {
           "cameras": "Cameras",
-          "default_camera": "Default camera"
+          "default_camera": "Default camera",
+          "return_after_seconds": "Return to the default camera after"
+        },
+        "data_description": {
+          "return_after_seconds": "Seconds without a touch before the main view shows the default camera again. 0 turns this off."
         }
       }
     },
@@ -21,10 +25,14 @@
   "options": {
     "step": {
       "init": {
-        "title": "Cameras",
+        "title": "Camera Hub",
         "data": {
           "cameras": "Cameras",
-          "default_camera": "Default camera"
+          "default_camera": "Default camera",
+          "return_after_seconds": "Return to the default camera after"
+        },
+        "data_description": {
+          "return_after_seconds": "Seconds without a touch before the main view shows the default camera again. 0 turns this off."
         }
       }
     },

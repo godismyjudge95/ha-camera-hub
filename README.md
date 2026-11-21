@@ -4,7 +4,7 @@ A Home Assistant integration that gives [Frigate](https://frigate.video) cameras
 dashboard card for a wall tablet or a phone: a large live view, camera tiles,
 recent clips, a doorbell screen, and notification controls.
 
-**Status:** early development (0.0.x). Only the live view works now.
+**Status:** early development (0.0.x). The live view and the camera tiles work now.
 
 ## Requirements
 

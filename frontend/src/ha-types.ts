@@ -42,4 +42,7 @@ export interface HubConfig {
   version: string;
   cameras: HubCamera[];
   default_camera: string | null;
+  // Seconds without a touch before the main view shows the default camera
+  // again. 0 turns this off.
+  return_after_seconds: number;
 }

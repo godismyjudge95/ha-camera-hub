@@ -1,88 +1,165 @@
 import { LitElement, css, html, nothing, type PropertyValues } from "lit";
 
+import { isCameraOffline, snapshotUrl } from "../api/snapshot";
 import type { HomeAssistant, HubCamera } from "../ha-types";
 import { LivePlayer, type PlayerStatus } from "../player/live-player";
 import { tokens } from "../styles";
 
+const FADE_MS = 180;
+
 // The large live view of one camera.
+//
+// It has two video elements. A new camera starts on the hidden one, and the
+// view fades over when it plays. Until then the previous camera stays on
+// screen, so a camera change never shows a black frame.
 export class MainView extends LitElement {
   static override properties = {
     hass: { attribute: false },
     camera: { attribute: false },
-    status: { state: true },
+    statuses: { state: true },
+    shown: { state: true },
   };
 
   declare hass: HomeAssistant;
   declare camera: HubCamera | undefined;
-  declare status: PlayerStatus;
+  // One status per video element.
+  declare statuses: [PlayerStatus, PlayerStatus];
+  // The video element on screen.
+  declare shown: 0 | 1;
 
-  private player?: LivePlayer;
+  private players: LivePlayer[] = [];
+  // The video element that plays the current camera.
+  private target: 0 | 1 = 0;
+  private snapshotTime = Date.now();
 
   constructor() {
     super();
-    this.status = { state: "connecting" };
+    this.statuses = [{ state: "connecting" }, { state: "connecting" }];
+    this.shown = 0;
   }
 
   private readonly onVisibilityChange = () => {
-    if (document.hidden) this.player?.stop();
-    else this.startPlayer();
+    if (document.hidden) {
+      this.stopAll();
+    } else {
+      this.snapshotTime = Date.now();
+      this.start();
+    }
   };
 
   override connectedCallback(): void {
     super.connectedCallback();
     document.addEventListener("visibilitychange", this.onVisibilityChange);
-    if (this.player) this.startPlayer();
+    if (this.players.length) this.start();
   }
 
   override disconnectedCallback(): void {
     super.disconnectedCallback();
     document.removeEventListener("visibilitychange", this.onVisibilityChange);
-    this.player?.stop();
+    this.stopAll();
   }
 
   override firstUpdated(): void {
-    const video = this.renderRoot.querySelector("video")!;
-    this.player = new LivePlayer(() => this.hass, video, (status) => (this.status = status));
-    this.startPlayer();
+    const videos = [...this.renderRoot.querySelectorAll("video")];
+    this.players = videos.map(
+      (video, index) =>
+        new LivePlayer(
+          () => this.hass,
+          video,
+          (status) => this.onStatus(index as 0 | 1, status),
+        ),
+    );
+    this.start();
   }
 
   override updated(changed: PropertyValues<this>): void {
     const previous = changed.get("camera") as HubCamera | undefined;
-    if (changed.has("camera") && previous?.entity_id !== this.camera?.entity_id && this.player) {
-      this.startPlayer();
+    if (
+      changed.has("camera") &&
+      previous &&
+      previous.entity_id !== this.camera?.entity_id &&
+      this.players.length
+    ) {
+      this.snapshotTime = Date.now();
+      this.switchCamera();
     }
   }
 
-  private startPlayer(): void {
-    if (!this.camera || document.hidden) return;
-    this.player?.play({
+  private onStatus(index: 0 | 1, status: PlayerStatus): void {
+    const statuses: [PlayerStatus, PlayerStatus] = [...this.statuses];
+    statuses[index] = status;
+    this.statuses = statuses;
+    if (index === this.target && status.state === "playing" && this.shown !== index) {
+      const previous = this.shown;
+      this.shown = index;
+      setTimeout(() => {
+        if (this.target !== previous) this.players[previous]?.stop();
+      }, FADE_MS + 50);
+    }
+  }
+
+  private source() {
+    if (!this.camera) return undefined;
+    return {
       instanceId: this.camera.instance_id,
       stream: this.camera.stream,
       iceEntityId: this.camera.entity_id,
-    });
+    };
+  }
+
+  // Start the current camera on the element that is on screen.
+  private start(): void {
+    const source = this.source();
+    if (!source || document.hidden) return;
+    this.target = this.shown;
+    this.players[this.target]?.play(source);
+  }
+
+  // Start the new camera on the hidden element, if a camera is on screen.
+  private switchCamera(): void {
+    const source = this.source();
+    if (!source || document.hidden) return;
+    if (this.statuses[this.shown].state !== "playing") {
+      this.start();
+      return;
+    }
+    this.target = this.shown === 0 ? 1 : 0;
+    this.players[this.target]?.play(source);
+  }
+
+  private stopAll(): void {
+    for (const player of this.players) player.stop();
   }
 
   override render() {
-    const playing = this.status.state === "playing";
+    const camera = this.camera;
+    const status = this.statuses[this.target];
+    const playing = status.state === "playing";
+    const anythingOnScreen = this.statuses[this.shown].state === "playing";
+    const offline = camera ? isCameraOffline(this.hass, camera.entity_id) : false;
+    const snapshot =
+      camera && !anythingOnScreen ? snapshotUrl(this.hass, camera.entity_id, this.snapshotTime) : undefined;
+
     return html`
       <div class="frame">
-        <video muted playsinline autoplay></video>
+        ${snapshot ? html`<img class="snapshot" src=${snapshot} alt="" />` : nothing}
+        <video class=${this.shown === 0 ? "on" : ""} muted playsinline autoplay></video>
+        <video class=${this.shown === 1 ? "on" : ""} muted playsinline autoplay></video>
         <div class="shade top"></div>
         <div class="overlay top">
           <span class="live ${playing ? "on" : ""}">
-            <span class="dot"></span>${playing ? "Live" : "Connecting"}
+            <span class="dot"></span>${playing ? "Live" : offline ? "Offline" : "Connecting"}
           </span>
-          <span class="name">${this.camera?.name ?? ""}</span>
-          ${playing
-            ? html`<span class="mode">${this.status.state === "playing" ? this.status.mode.toUpperCase() : ""}</span>`
-            : nothing}
+          <span class="name">${camera?.name ?? ""}</span>
         </div>
-        ${this.status.state === "retrying"
-          ? html`<div class="message">
-              ${this.status.reason}. Trying again in ${this.status.inSeconds} s.
-            </div>`
-          : nothing}
-        ${this.status.state === "connecting" ? html`<div class="spinner"></div>` : nothing}
+        ${offline
+          ? html`<div class="message">This camera is offline.</div>`
+          : status.state === "retrying"
+            ? html`<div class="message">
+                ${status.reason}. Trying again in ${status.inSeconds} s.
+              </div>`
+            : nothing}
+        ${!playing && !offline ? html`<div class="spinner"></div>` : nothing}
       </div>
     `;
   }
@@ -96,17 +173,29 @@ export class MainView extends LitElement {
       .frame {
         position: relative;
         aspect-ratio: 16 / 9;
-        background: var(--ch-surface);
+        background: #000;
         border-radius: var(--ch-radius-main);
         overflow: hidden;
       }
-      video {
+      video,
+      .snapshot {
         position: absolute;
         inset: 0;
         width: 100%;
         height: 100%;
         object-fit: contain;
-        background: #000;
+      }
+      video {
+        opacity: 0;
+        transition: opacity ${FADE_MS}ms ease;
+      }
+      video.on {
+        opacity: 1;
+      }
+      .snapshot {
+        object-fit: cover;
+        filter: blur(8px) brightness(0.6);
+        transform: scale(1.05);
       }
       .shade.top {
         position: absolute;
@@ -147,12 +236,6 @@ export class MainView extends LitElement {
       }
       .live.on .dot {
         background: var(--ch-red);
-      }
-      .mode {
-        margin-left: auto;
-        font-size: 11px;
-        letter-spacing: 0.08em;
-        color: var(--ch-text-secondary);
       }
       .message {
         position: absolute;

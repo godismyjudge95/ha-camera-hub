@@ -14,7 +14,14 @@ from homeassistant.core import callback
 from homeassistant.helpers import selector
 import voluptuous as vol
 
-from .const import CONF_CAMERAS, CONF_DEFAULT_CAMERA, DOMAIN, FRIGATE_DOMAIN
+from .const import (
+    CONF_CAMERAS,
+    CONF_DEFAULT_CAMERA,
+    CONF_RETURN_AFTER,
+    DEFAULT_RETURN_AFTER,
+    DOMAIN,
+    FRIGATE_DOMAIN,
+)
 
 
 def _cameras_schema(defaults: dict[str, Any]) -> vol.Schema:
@@ -31,6 +38,20 @@ def _cameras_schema(defaults: dict[str, Any]) -> vol.Schema:
             vol.Required(
                 CONF_DEFAULT_CAMERA, default=defaults.get(CONF_DEFAULT_CAMERA, vol.UNDEFINED)
             ): selector.EntitySelector(selector.EntitySelectorConfig(filter=frigate_camera)),
+            vol.Required(
+                CONF_RETURN_AFTER, default=defaults.get(CONF_RETURN_AFTER, DEFAULT_RETURN_AFTER)
+            ): vol.All(
+                selector.NumberSelector(
+                    selector.NumberSelectorConfig(
+                        min=0,
+                        max=3600,
+                        step=10,
+                        unit_of_measurement="s",
+                        mode=selector.NumberSelectorMode.BOX,
+                    )
+                ),
+                vol.Coerce(int),
+            ),
         }
     )
 

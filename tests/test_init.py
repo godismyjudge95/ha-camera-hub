@@ -20,7 +20,7 @@ async def test_card_bundle_is_loaded_on_dashboards(
 ) -> None:
     await _setup(hass, hub_entry)
 
-    assert "/camera_hub_static/camera-hub-card.js?v=0.0.1" in hass.data[DATA_EXTRA_MODULE_URL].urls
+    assert "/camera_hub_static/camera-hub-card.js?v=0.0.2" in hass.data[DATA_EXTRA_MODULE_URL].urls
 
 
 async def test_config_lists_cameras_with_their_streams(
@@ -38,8 +38,10 @@ async def test_config_lists_cameras_with_their_streams(
 
     assert response["success"]
     assert response["result"] == {
-        "version": "0.0.1",
+        "version": "0.0.2",
         "default_camera": "camera.nursery",
+        # Entries made before this option existed get the default.
+        "return_after_seconds": 120,
         "cameras": [
             {
                 "entity_id": "camera.nursery",

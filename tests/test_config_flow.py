@@ -7,7 +7,12 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.camera_hub.const import CONF_CAMERAS, CONF_DEFAULT_CAMERA, DOMAIN
+from custom_components.camera_hub.const import (
+    CONF_CAMERAS,
+    CONF_DEFAULT_CAMERA,
+    CONF_RETURN_AFTER,
+    DOMAIN,
+)
 
 
 async def test_aborts_without_frigate(hass: HomeAssistant) -> None:
@@ -41,6 +46,7 @@ async def test_creates_entry_with_cameras_as_options(
     assert result["options"] == {
         CONF_CAMERAS: ["camera.nursery", "camera.porch"],
         CONF_DEFAULT_CAMERA: "camera.nursery",
+        CONF_RETURN_AFTER: 120,
     }
 
 
@@ -50,11 +56,12 @@ async def test_options_flow_changes_cameras(
     result = await hass.config_entries.options.async_init(hub_entry.entry_id)
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
-        {CONF_CAMERAS: ["camera.porch"], CONF_DEFAULT_CAMERA: "camera.porch"},
+        {CONF_CAMERAS: ["camera.porch"], CONF_DEFAULT_CAMERA: "camera.porch", CONF_RETURN_AFTER: 0},
     )
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert hub_entry.options == {
         CONF_CAMERAS: ["camera.porch"],
         CONF_DEFAULT_CAMERA: "camera.porch",
+        CONF_RETURN_AFTER: 0,
     }

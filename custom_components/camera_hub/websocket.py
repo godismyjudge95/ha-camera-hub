@@ -9,7 +9,13 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.loader import async_get_integration
 import voluptuous as vol
 
-from .const import CONF_CAMERAS, CONF_DEFAULT_CAMERA, DOMAIN
+from .const import (
+    CONF_CAMERAS,
+    CONF_DEFAULT_CAMERA,
+    CONF_RETURN_AFTER,
+    DEFAULT_RETURN_AFTER,
+    DOMAIN,
+)
 from .frigate_meta import get_camera_info
 
 
@@ -45,5 +51,6 @@ async def ws_get_config(
             "version": str(integration.version),
             "cameras": cameras,
             "default_camera": options.get(CONF_DEFAULT_CAMERA),
+            "return_after_seconds": options.get(CONF_RETURN_AFTER, DEFAULT_RETURN_AFTER),
         },
     )
