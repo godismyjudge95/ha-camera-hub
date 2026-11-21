@@ -8,7 +8,9 @@ notifications for Frigate's person alerts.
 - A large live view and a tile for every camera. A tap on a tile shows that
   camera in the large view.
 - Recent alerts with filters. A tap plays the clip in a large player.
-- Rewind: a timeline of the last three hours, with the camera's alerts marked.
+- Rewind: a vertical timeline of all the camera's recordings, with its alerts
+  and detections marked. Scroll it to play any time, or tap a day to go to
+  that day. On a tablet it replaces the tiles; the rewind button opens it.
 - Push to talk, and pan and tilt.
 - Pauses of the notifications, per zone.
 - A doorbell screen over every card when the doorbell rings or a person comes
@@ -16,7 +18,7 @@ notifications for Frigate's person alerts.
 
 On a phone (a card narrower than 700 px) the video stays at the top with its
 controls under it, and tabs switch between the cameras, a list of alerts
-grouped by day, and the pauses. A tap on an alert plays it in the video at the
+grouped by day, the timeline, and the pauses. A tap on an alert plays it in the video at the
 top.
 
 **The integration:** one phone notification per burst of person alerts in a

@@ -13,6 +13,7 @@ import type { MainView } from "./ui/main-view";
 import "./ui/main-view";
 import "./ui/pause-bar";
 import "./ui/tile-rail";
+import "./ui/vertical-timeline";
 import { errorMessage } from "./errors";
 
 declare const __CARD_VERSION__: string;
@@ -21,7 +22,7 @@ const SNAPSHOT_REFRESH_MS = 10_000;
 // Below this width the card uses the phone layout.
 const PHONE_MAX_WIDTH = 700;
 
-type PhoneTab = "cameras" | "alerts" | "pause";
+type PhoneTab = "cameras" | "alerts" | "timeline" | "pause";
 // An always-on screen keeps its picture still for hours. Moving the layout by
 // a pixel or two now and then spreads the wear of static edges and text.
 const SHIFT_MS = 2 * 60_000;
@@ -66,6 +67,8 @@ export class CameraHubCard extends LitElement {
     shift: { state: true },
     phone: { state: true },
     tab: { state: true },
+    timelineOpen: { state: true },
+    playbackPosition: { state: true },
   };
 
   declare hass: HomeAssistant;
@@ -83,6 +86,10 @@ export class CameraHubCard extends LitElement {
   // The card is narrow, as on a phone: one column with tabs.
   declare phone: boolean;
   declare tab: PhoneTab;
+  // On a tablet the timeline replaces the camera tiles while it is open.
+  declare timelineOpen: boolean;
+  // The time the main view plays, or null when it is live.
+  declare playbackPosition: number | null;
 
   private cardConfig: CardConfig = { type: "custom:camera-hub-card" };
   private loadStarted = false;
@@ -102,6 +109,8 @@ export class CameraHubCard extends LitElement {
     this.shift = [0, 0];
     this.phone = false;
     this.tab = "cameras";
+    this.timelineOpen = false;
+    this.playbackPosition = null;
     this.reviewStore.onChange(() => this.reviewsRevision++);
     // Any touch on the card counts as activity, also on controls that stop
     // the event from bubbling further.
@@ -111,6 +120,19 @@ export class CameraHubCard extends LitElement {
     });
     this.addEventListener("clip-open", (event) => this.onClipOpen((event as CustomEvent<Review>).detail));
     this.addEventListener("clip-close", () => (this.openClip = undefined));
+    this.addEventListener("timeline-toggle", () => {
+      if (this.phone) this.tab = this.tab === "timeline" ? "cameras" : "timeline";
+      else this.timelineOpen = !this.timelineOpen;
+    });
+    this.addEventListener("playback-position", (event) => {
+      this.playbackPosition = (event as CustomEvent<number | null>).detail;
+    });
+    this.addEventListener("timeline-seek", (event) => {
+      const time = (event as CustomEvent<number | null>).detail;
+      const main = this.renderRoot.querySelector<MainView>("camera-hub-main-view");
+      if (time === null) main?.goLive();
+      else main?.playRecording(time);
+    });
   }
 
   setConfig(config: CardConfig): void {
@@ -236,7 +258,7 @@ export class CameraHubCard extends LitElement {
       .hass=${this.hass}
       .camera=${main}
       .snapshotRefresh=${this.snapshotRefresh}
-      .reviews=${this.reviewStore.reviews}
+      .timelineOpen=${this.phone ? this.tab === "timeline" : this.timelineOpen}
     ></camera-hub-main-view>`;
     const tiles = html`<camera-hub-tile-rail
       .hass=${this.hass}
@@ -245,6 +267,13 @@ export class CameraHubCard extends LitElement {
       .refresh=${this.snapshotRefresh}
       .alerting=${alerting}
     ></camera-hub-tile-rail>`;
+    const timeline = main
+      ? html`<camera-hub-vertical-timeline
+          .hass=${this.hass}
+          .camera=${main}
+          .position=${this.playbackPosition}
+        ></camera-hub-vertical-timeline>`
+      : nothing;
     const layout = this.phone ? "list" : "row";
     const pause = html`<camera-hub-pause-bar
       .hass=${this.hass}
@@ -259,9 +288,21 @@ export class CameraHubCard extends LitElement {
     ></camera-hub-clips-strip>`;
     return html`
       ${this.phone
-        ? this.renderPhone(mainView, tiles, alerts, pause, alerting.size > 0)
+        ? this.renderPhone(mainView, tiles, alerts, timeline, pause, alerting.size > 0)
         : html`<div class="layout" style="translate: ${this.shift[0]}px ${this.shift[1]}px">
-            ${mainView}${tiles}${pause}${alerts}
+            ${mainView}
+            ${this.timelineOpen
+              ? html`<div class="side-timeline">
+                  <div class="side-head">
+                    <span>Timeline · ${main?.name ?? ""}</span>
+                    <button @click=${() => (this.timelineOpen = false)}>
+                      <ha-icon icon="mdi:view-grid-outline"></ha-icon>Cameras
+                    </button>
+                  </div>
+                  ${timeline}
+                </div>`
+              : tiles}
+            ${pause}${alerts}
           </div>`}
       ${this.openClip
         ? html`<camera-hub-clip-modal
@@ -285,6 +326,7 @@ export class CameraHubCard extends LitElement {
     mainView: TemplateResult,
     tiles: TemplateResult,
     alerts: TemplateResult,
+    timeline: TemplateResult | typeof nothing,
     pause: TemplateResult,
     alerting: boolean,
   ) {
@@ -296,6 +338,7 @@ export class CameraHubCard extends LitElement {
     const tabs: Array<{ id: PhoneTab; label: string; dot?: string }> = [
       { id: "cameras", label: "Cameras" },
       { id: "alerts", label: "Alerts", dot: alerting ? "red" : undefined },
+      { id: "timeline", label: "Timeline" },
       ...(notifyZones ? [{ id: "pause" as const, label: "Pause", dot: paused ? "amber" : undefined }] : []),
     ];
     return html`
@@ -314,7 +357,13 @@ export class CameraHubCard extends LitElement {
           )}
         </div>
         <div class="panel">
-          ${this.tab === "alerts" ? alerts : this.tab === "pause" && notifyZones ? pause : tiles}
+          ${this.tab === "alerts"
+            ? alerts
+            : this.tab === "timeline"
+              ? timeline
+              : this.tab === "pause" && notifyZones
+                ? pause
+                : tiles}
         </div>
       </div>
     `;
@@ -348,8 +397,38 @@ export class CameraHubCard extends LitElement {
         grid-area: pause;
         min-width: 0;
       }
-      camera-hub-tile-rail {
+      camera-hub-tile-rail,
+      .side-timeline {
         grid-area: rail;
+      }
+      .side-timeline {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        --ch-timeline-height: 600px;
+      }
+      .side-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--ch-text-secondary);
+      }
+      .side-head button {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        min-height: 40px;
+        padding: 0 12px;
+        border: 1px solid var(--ch-hairline);
+        border-radius: 999px;
+        background: var(--ch-surface);
+        color: var(--ch-text);
+        font: inherit;
+        font-size: 13px;
+        cursor: pointer;
+        --mdc-icon-size: 18px;
       }
       /* Tablet and desktop: the tiles sit in a column next to the main view,
          and the alerts run under the main view. */
@@ -365,6 +444,8 @@ export class CameraHubCard extends LitElement {
       /* Phone: the video stays at the top while the tab below it scrolls. */
       .phone {
         --ch-rail-columns: 2;
+        /* The timeline fills the screen under the video and the tabs. */
+        --ch-timeline-height: max(320px, calc(100dvh - var(--header-height, 56px) - 400px));
       }
       .sticky {
         position: sticky;
@@ -394,7 +475,7 @@ export class CameraHubCard extends LitElement {
         background: none;
         color: var(--ch-text-secondary);
         font: inherit;
-        font-size: 15px;
+        font-size: 14px;
         font-weight: 600;
         cursor: pointer;
         touch-action: manipulation;

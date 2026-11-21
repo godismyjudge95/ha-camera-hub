@@ -6,20 +6,16 @@ import type { HomeAssistant, HubCamera } from "../ha-types";
 import { LivePlayer, type PlayerStatus } from "../player/live-player";
 import { Talk, type TalkUpdate, talkUnavailableReason } from "../player/talk";
 import { VodPlayer, type VodState } from "../player/vod-player";
-import { type Review, recordingPlaylistPath, reviewLabel } from "../reviews";
+import { recordingPlaylistPath } from "../reviews";
 import { spinnerStyles, tokens } from "../styles";
 import type { ControlAction, TalkState } from "./player-controls";
-import type { TimelineMarker } from "./timeline";
 import "./player-controls";
 import "./ptz-pad";
 import "./talk-banner";
-import "./timeline";
 import { errorMessage } from "../errors";
 
 const FADE_MS = 180;
 const CONTROLS_HIDE_MS = 4000;
-// How far back the rewind timeline reaches.
-const TIMELINE_SECONDS = 3 * 3600;
 // A rewind loads this much recording; at its end the next part loads.
 const PLAYBACK_WINDOW_SECONDS = 30 * 60;
 // Frigate writes recording segments with a short delay, so playback stays
@@ -44,7 +40,7 @@ export class MainView extends LitElement {
     hass: { attribute: false },
     camera: { attribute: false },
     snapshotRefresh: { attribute: false },
-    reviews: { attribute: false },
+    timelineOpen: { attribute: false },
     statuses: { state: true },
     shown: { state: true },
     playback: { state: true },
@@ -55,10 +51,8 @@ export class MainView extends LitElement {
     position: { state: true },
     duration: { state: true },
     rate: { state: true },
-    rewinding: { state: true },
     controlsVisible: { state: true },
     fullscreen: { state: true },
-    now: { state: true },
     talkUpdate: { state: true },
     ptzOpen: { state: true },
   };
@@ -68,8 +62,8 @@ export class MainView extends LitElement {
   // The tiles use the same value, so the snapshot comes from the browser
   // cache and shows at once while the stream connects.
   declare snapshotRefresh: number;
-  // Recent alerts of all cameras; the timeline marks this camera's.
-  declare reviews: Review[];
+  // The card shows the timeline; the rewind button shows it as on.
+  declare timelineOpen: boolean;
   // One status per live video element.
   declare statuses: [PlayerStatus, PlayerStatus];
   // The live video element on screen.
@@ -82,11 +76,8 @@ export class MainView extends LitElement {
   declare position: number;
   declare duration: number;
   declare rate: number;
-  // The rewind timeline is open.
-  declare rewinding: boolean;
   declare controlsVisible: boolean;
   declare fullscreen: boolean;
-  declare now: number;
   declare talkUpdate: TalkUpdate;
   declare ptzOpen: boolean;
 
@@ -100,11 +91,10 @@ export class MainView extends LitElement {
   // The live video element that plays the current camera.
   private target: 0 | 1 = 0;
   private hideTimer?: ReturnType<typeof setTimeout>;
-  private clock?: ReturnType<typeof setInterval>;
 
   constructor() {
     super();
-    this.reviews = [];
+    this.timelineOpen = false;
     this.statuses = [{ state: "connecting" }, { state: "connecting" }];
     this.shown = 0;
     this.vodState = "loading";
@@ -113,10 +103,8 @@ export class MainView extends LitElement {
     this.position = 0;
     this.duration = 0;
     this.rate = 1;
-    this.rewinding = false;
     this.controlsVisible = false;
     this.fullscreen = false;
-    this.now = Date.now() / 1000;
     this.talkUpdate = { phase: "idle", level: 0 };
     this.ptzOpen = false;
   }
@@ -146,18 +134,21 @@ export class MainView extends LitElement {
     super.connectedCallback();
     document.addEventListener("visibilitychange", this.onVisibilityChange);
     document.addEventListener("fullscreenchange", this.onFullscreenChange);
-    this.clock = setInterval(() => (this.now = Date.now() / 1000), 30_000);
-    if (this.players.length && !this.playback) this.startLive();
+    // A view that comes back (for example after a layout change) starts live.
+    if (this.players.length) {
+      this.startLive();
+      this.reportPosition(null);
+    }
   }
 
   override disconnectedCallback(): void {
     super.disconnectedCallback();
     document.removeEventListener("visibilitychange", this.onVisibilityChange);
     document.removeEventListener("fullscreenchange", this.onFullscreenChange);
-    clearInterval(this.clock);
     clearTimeout(this.hideTimer);
     this.stopLive();
     this.closeVod();
+    this.playback = undefined;
     this.talk.close();
   }
 
@@ -172,12 +163,16 @@ export class MainView extends LitElement {
         ),
     );
     const vod = this.vodVideo!;
-    vod.addEventListener("timeupdate", () => (this.position = vod.currentTime));
+    vod.addEventListener("timeupdate", () => {
+      this.position = vod.currentTime;
+      if (this.playback) this.reportPosition(this.playback.windowStart + vod.currentTime);
+    });
     vod.addEventListener("durationchange", () => (this.duration = vod.duration || 0));
     vod.addEventListener("play", () => (this.paused = false));
     vod.addEventListener("pause", () => (this.paused = true));
     vod.addEventListener("ended", () => this.onPlaybackEnded());
     this.startLive();
+    this.reportPosition(null);
   }
 
   override updated(changed: PropertyValues<this>): void {
@@ -185,8 +180,7 @@ export class MainView extends LitElement {
     if (changed.has("camera") && previous && previous.entity_id !== this.camera?.entity_id) {
       if (this.playback) this.goLive();
       else this.switchCamera();
-      this.rewinding = false;
-      this.ptzOpen = false;
+        this.ptzOpen = false;
       this.talk.close();
       this.talkUpdate = { phase: "idle", level: 0 };
     }
@@ -202,7 +196,7 @@ export class MainView extends LitElement {
     clearTimeout(this.hideTimer);
     this.hideTimer = setTimeout(() => {
       const needed =
-        this.rewinding || this.ptzOpen || this.talkUpdate.phase !== "idle" || (this.playback && this.paused);
+        this.timelineOpen || this.ptzOpen || this.talkUpdate.phase !== "idle" || (this.playback && this.paused);
       if (!needed) this.controlsVisible = false;
     }, CONTROLS_HIDE_MS);
   }
@@ -293,11 +287,17 @@ export class MainView extends LitElement {
     );
   }
 
-  // Plays the camera's recording from `time` (epoch seconds), with the
-  // timeline open. The phone layout plays alerts this way, in the main view.
+  // Plays the camera's recording from `time` (epoch seconds).
   playRecording(time: number): void {
-    this.rewinding = true;
     this.rewindTo(time);
+  }
+
+  // Tells the card which time plays, or null for live, so the timeline can
+  // follow it.
+  private reportPosition(time: number | null): void {
+    this.dispatchEvent(
+      new CustomEvent("playback-position", { detail: time, bubbles: true, composed: true }),
+    );
   }
 
   private onPlaybackEnded(): void {
@@ -307,9 +307,10 @@ export class MainView extends LitElement {
     this.rewindTo(playback.windowEnd);
   }
 
-  private goLive(): void {
+  goLive(): void {
     this.closeVod();
     this.playback = undefined;
+    this.reportPosition(null);
     this.rate = 1;
     this.startLive();
   }
@@ -349,8 +350,7 @@ export class MainView extends LitElement {
         if (video) video.playbackRate = control.rate;
         break;
       case "rewind":
-        this.rewinding = !this.rewinding;
-        this.now = Date.now() / 1000;
+        this.dispatchEvent(new CustomEvent("timeline-toggle", { bubbles: true, composed: true }));
         break;
       case "live":
         this.goLive();
@@ -404,14 +404,6 @@ export class MainView extends LitElement {
     };
   }
 
-  private timelineMarkers(): TimelineMarker[] {
-    const camera = this.camera;
-    if (!camera) return [];
-    return this.reviews
-      .filter((review) => review.camera === camera.frigate_name)
-      .map((review) => ({ time: review.start_time, label: reviewLabel(review) }));
-  }
-
   // --- Render -----------------------------------------------------------------
 
   override render() {
@@ -439,7 +431,7 @@ export class MainView extends LitElement {
           : undefined;
     const showChrome =
       this.controlsVisible ||
-      this.rewinding ||
+      this.timelineOpen ||
       this.ptzOpen ||
       this.talkUpdate.phase !== "idle" ||
       (!live && this.paused);
@@ -473,18 +465,6 @@ export class MainView extends LitElement {
       </div>
         <div class="chrome ${showChrome ? "visible" : ""}" @control=${this.onControl}>
           <div class="shade bottom"></div>
-          ${this.rewinding
-            ? html`<camera-hub-timeline
-                .start=${this.now - TIMELINE_SECONDS}
-                .end=${this.now}
-                .markers=${this.timelineMarkers()}
-                .position=${this.playback ? this.playback.windowStart + this.position : undefined}
-                @timeline-seek=${(event: CustomEvent<number>) => {
-                  this.showControls();
-                  this.rewindTo(event.detail);
-                }}
-              ></camera-hub-timeline>`
-            : nothing}
           <camera-hub-player-controls
             .mode=${live ? "live" : "playback"}
             .paused=${this.paused}
@@ -494,7 +474,7 @@ export class MainView extends LitElement {
             .clockStart=${this.playback?.windowStart}
             .rate=${this.rate}
             .fullscreen=${this.fullscreen}
-            .rewinding=${this.rewinding}
+            .rewinding=${this.timelineOpen}
             .talk=${live ? this.talkState() : undefined}
             .ptz=${live && (camera?.ptz ?? false)}
             .ptzOpen=${this.ptzOpen}
