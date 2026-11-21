@@ -163,8 +163,8 @@ export class PlayerControls extends LitElement {
         ${this.paused
           ? this.button("mdi:play", "Play", { action: "play" })
           : this.button("mdi:pause", "Pause", { action: "pause" })}
-        ${this.button("mdi:rewind-10", "Back 10 seconds", { action: "skip", seconds: -10 })}
-        ${this.button("mdi:fast-forward-10", "Forward 10 seconds", { action: "skip", seconds: 10 })}
+        ${this.button("mdi:rewind-10", "Back 10 seconds", { action: "skip", seconds: -10 }, "skip")}
+        ${this.button("mdi:fast-forward-10", "Forward 10 seconds", { action: "skip", seconds: 10 }, "skip")}
         <span class="time">${this.timeLabel(shown)}</span>
         <input
           class="seek"
@@ -198,7 +198,12 @@ export class PlayerControls extends LitElement {
           ? this.button("mdi:volume-off", "Sound on", { action: "unmute" })
           : this.button("mdi:volume-high", "Sound off", { action: "mute" })}
         ${this.mode === "playback"
-          ? this.button("mdi:history", this.rewinding ? "Close timeline" : "Timeline", { action: "rewind" }, this.rewinding ? "on" : "")
+          ? this.button(
+              "mdi:history",
+              this.rewinding ? "Close timeline" : "Timeline",
+              { action: "rewind" },
+              `timeline-toggle ${this.rewinding ? "on" : ""}`,
+            )
           : nothing}
         ${this.button(this.fullscreen ? "mdi:fullscreen-exit" : "mdi:fullscreen", "Full screen", { action: "fullscreen" })}
         ${this.mode === "playback"
@@ -222,6 +227,7 @@ export class PlayerControls extends LitElement {
     css`
       :host {
         display: block;
+        container-type: inline-size;
       }
       .bar {
         display: flex;
@@ -298,6 +304,29 @@ export class PlayerControls extends LitElement {
         margin: 0 4px;
         accent-color: var(--ch-accent);
         cursor: pointer;
+      }
+      /* A phone: the seek bar gets its own row, and the buttons that the seek
+         bar and the open timeline make unneeded are left out. */
+      @container (max-width: 560px) {
+        .bar {
+          flex-wrap: wrap;
+          row-gap: 0;
+          padding: 6px 8px;
+        }
+        .seek {
+          order: -1;
+          flex: 1 0 100%;
+          height: 32px;
+          margin: 0;
+        }
+        .skip,
+        .timeline-toggle {
+          display: none;
+        }
+        .control {
+          min-width: 44px;
+          height: 44px;
+        }
       }
     `,
   ];

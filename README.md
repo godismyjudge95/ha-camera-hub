@@ -14,6 +14,11 @@ notifications for Frigate's person alerts.
 - A doorbell screen over every card when the doorbell rings or a person comes
   to the door.
 
+On a phone (a card narrower than 700 px) the video stays at the top with its
+controls under it, and tabs switch between the cameras, a list of alerts
+grouped by day, and the pauses. A tap on an alert plays it in the video at the
+top.
+
 **The integration:** one phone notification per burst of person alerts in a
 zone. The phone updates that notification in place instead of alerting again.
 
@@ -85,8 +90,9 @@ diagnostics also list the last 50 decisions.
 
 - A press on a doorbell button sensor always shows the doorbell on every Camera
   Hub card.
-- A person-at-the-door sensor shows it only when none is showing and the last
-  one is longer ago than the cooldown.
+- A person-at-the-door sensor shows it only when none is showing, the last one
+  is longer ago than the cooldown, and the zone of the doorbell camera is not
+  paused. So a pause of that zone also stops these takeovers; a ring still shows.
 - The card closes the doorbell after 60 seconds without a touch, and never while
   someone talks.
 

@@ -37,7 +37,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: CameraHubConfigEntry) ->
     await pauses.async_load()
     notifier = Notifier(hass, entry.options, zones, pauses)
     doorbell_config = doorbell_from_options(entry.options)
-    doorbell = DoorbellCoordinator(hass, doorbell_config) if doorbell_config else None
+    doorbell = None
+    if doorbell_config:
+        doorbell_zone = next(
+            (zone.id for zone in zones if doorbell_config.camera in zone.cameras), None
+        )
+        doorbell = DoorbellCoordinator(
+            hass,
+            doorbell_config,
+            lambda: doorbell_zone is not None and pauses.is_paused(doorbell_zone),
+        )
     entry.runtime_data = HubData(zones=zones, pauses=pauses, notifier=notifier, doorbell=doorbell)
     entry.async_on_unload(pauses.async_unload)
     entry.async_on_unload(notifier.async_stop)

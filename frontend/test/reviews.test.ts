@@ -3,7 +3,9 @@ import { describe, expect, test } from "bun:test";
 import {
   type Review,
   clipPlaylistPath,
+  groupByDay,
   relativeTime,
+  reviewDuration,
   reviewLabel,
   reviewMatches,
   thumbnailPath,
@@ -86,5 +88,35 @@ describe("media paths", () => {
 
   test("have no clip while the review is still running", () => {
     expect(clipPlaylistPath("frigate", review("x1", 100, ["person"], null))).toBeUndefined();
+  });
+});
+
+describe("reviewDuration", () => {
+  test("shows minutes and seconds, and nothing while the review goes on", () => {
+    expect(reviewDuration(review("a", 100, ["person"], 118.4))).toBe("0:18");
+    expect(reviewDuration(review("b", 100, ["person"], 825))).toBe("12:05");
+    expect(reviewDuration(review("c", 100, ["person"], null))).toBeUndefined();
+  });
+});
+
+describe("groupByDay", () => {
+  test("puts reviews under Today, Yesterday and their date", () => {
+    const now = new Date(2026, 10, 21, 15, 0).getTime();
+    const at = (day: number, hour: number) => new Date(2026, 10, day, hour, 0).getTime() / 1000;
+    const days = groupByDay(
+      [review("a", at(21, 14)), review("b", at(21, 9)), review("c", at(20, 22)), review("d", at(18, 8))],
+      now,
+    );
+
+    const nov18 = new Date(2026, 10, 18).toLocaleDateString([], {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+    });
+    expect(days.map((day) => [day.label, day.reviews.map((item) => item.id)])).toEqual([
+      ["Today", ["a", "b"]],
+      ["Yesterday", ["c"]],
+      [nov18, ["d"]],
+    ]);
   });
 });

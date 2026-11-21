@@ -86,7 +86,7 @@ export class Timeline extends LitElement {
       >
         ${ticks.map(
           (tick) => html`
-            <span class="tick" style="left: ${this.fraction(tick) * 100}%">
+            <span class="tick ${tick % 3600 === 0 ? "hour" : "half"}" style="left: ${this.fraction(tick) * 100}%">
               ${this.fraction(tick) < 0.9
                 ? html`<span class="tick-label">${this.clock(tick)}</span>`
                 : nothing}
@@ -118,6 +118,13 @@ export class Timeline extends LitElement {
       :host {
         display: block;
         padding: 26px 18px 10px;
+        container-type: inline-size;
+      }
+      /* On a phone only the full hours have labels, so they do not overlap. */
+      @container (max-width: 560px) {
+        .half .tick-label {
+          display: none;
+        }
       }
       .track {
         position: relative;

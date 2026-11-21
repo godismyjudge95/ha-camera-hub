@@ -293,6 +293,13 @@ export class MainView extends LitElement {
     );
   }
 
+  // Plays the camera's recording from `time` (epoch seconds), with the
+  // timeline open. The phone layout plays alerts this way, in the main view.
+  playRecording(time: number): void {
+    this.rewinding = true;
+    this.rewindTo(time);
+  }
+
   private onPlaybackEnded(): void {
     const playback = this.playback;
     if (!playback) return;
@@ -438,6 +445,7 @@ export class MainView extends LitElement {
       (!live && this.paused);
 
     return html`
+      <div class="view">
       <div class="frame" @pointerdown=${() => this.showControls()}>
         <video class="live ${live && this.shown === 0 ? "on" : ""}" muted playsinline autoplay></video>
         <video class="live ${live && this.shown === 1 ? "on" : ""}" muted playsinline autoplay></video>
@@ -462,6 +470,7 @@ export class MainView extends LitElement {
         ${!playing && !offline && !message
           ? html`<div class="spinner ${snapshot ? "corner" : ""}"></div>`
           : nothing}
+      </div>
         <div class="chrome ${showChrome ? "visible" : ""}" @control=${this.onControl}>
           <div class="shade bottom"></div>
           ${this.rewinding
@@ -501,6 +510,10 @@ export class MainView extends LitElement {
     css`
       :host {
         display: block;
+      }
+      .view {
+        position: relative;
+        container-type: inline-size;
       }
       .frame {
         position: relative;
@@ -631,6 +644,26 @@ export class MainView extends LitElement {
       }
       .chrome > :not(.shade) {
         position: relative;
+      }
+      /* On a phone the controls sit under the video, always visible, so they
+         cover nothing and need no tap to appear. */
+      @container (max-width: 600px) {
+        .chrome {
+          position: static;
+          opacity: 1;
+          pointer-events: auto;
+        }
+        .chrome .shade {
+          display: none;
+        }
+        .name {
+          font-size: 16px;
+        }
+        .ptz {
+          right: 8px;
+          transform: translateY(-50%) scale(0.8);
+          transform-origin: right center;
+        }
       }
     `,
   ];

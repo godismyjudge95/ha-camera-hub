@@ -21,6 +21,7 @@ export class PauseBar extends LitElement {
     zones: { attribute: false },
     open: { state: true },
     now: { state: true },
+    layout: { attribute: false },
   };
 
   declare hass: HomeAssistant;
@@ -28,6 +29,9 @@ export class PauseBar extends LitElement {
   // The zone whose duration buttons are open, or "all".
   declare open: string | undefined;
   declare now: number;
+  // "row": one compact row of zone chips (tablet).
+  // "list": one row per zone with its buttons (phone).
+  declare layout: "row" | "list";
 
   private clock?: ReturnType<typeof setInterval>;
 
@@ -35,6 +39,7 @@ export class PauseBar extends LitElement {
     super();
     this.zones = [];
     this.now = Date.now();
+    this.layout = "row";
   }
 
   override connectedCallback(): void {
@@ -72,6 +77,7 @@ export class PauseBar extends LitElement {
   override render() {
     const zones = this.zones.filter((zone) => zone.notify);
     if (zones.length === 0) return nothing;
+    if (this.layout === "list") return this.renderList(zones);
     const openZone = zones.find((zone) => zone.id === this.open);
     const anyPaused = zones.some((zone) => this.pausedUntil(zone) !== undefined);
     return html`
@@ -122,6 +128,55 @@ export class PauseBar extends LitElement {
                     </button>`
                   : nothing}
               </div>
+            </div>
+          `
+        : nothing}
+    `;
+  }
+
+  private durationButtons(zone: string, paused: boolean) {
+    return html`
+      <div class="chips wrap">
+        ${DURATIONS.map(
+          (duration) =>
+            html`<button class="chip" @click=${() => this.call("pause_zone", zone, duration.minutes)}>
+              ${duration.label}
+            </button>`,
+        )}
+        ${paused
+          ? html`<button class="chip resume" @click=${() => this.call("resume_zone", zone)}>
+              <ha-icon icon="mdi:bell-ring-outline"></ha-icon>Resume
+            </button>`
+          : nothing}
+      </div>
+    `;
+  }
+
+  private renderList(zones: HubZone[]) {
+    const anyPaused = zones.some((zone) => this.pausedUntil(zone) !== undefined);
+    return html`
+      <p class="intro">Pause the phone notifications of a zone. The cameras keep recording.</p>
+      ${zones.map((zone) => {
+        const until = this.pausedUntil(zone);
+        return html`
+          <div class="zone ${until ? "paused" : ""}">
+            <div class="zone-head">
+              <ha-icon icon=${until ? "mdi:bell-sleep" : "mdi:bell-ring-outline"}></ha-icon>
+              <span class="zone-name">${zone.name}</span>
+              <span class="zone-state">${until ? `Paused · ${this.remaining(until)} left` : "Alerts on"}</span>
+            </div>
+            ${this.durationButtons(zone.id, until !== undefined)}
+          </div>
+        `;
+      })}
+      ${zones.length > 1
+        ? html`
+            <div class="zone">
+              <div class="zone-head">
+                <ha-icon icon="mdi:bell-off-outline"></ha-icon>
+                <span class="zone-name">All zones</span>
+              </div>
+              ${this.durationButtons(ALL, anyPaused)}
             </div>
           `
         : nothing}
@@ -203,6 +258,47 @@ export class PauseBar extends LitElement {
           opacity: 0;
           transform: translateY(-4px);
         }
+      }
+      .intro {
+        margin: 6px 4px 12px;
+        font-size: 14px;
+        color: var(--ch-text-secondary);
+      }
+      .zone {
+        padding: 14px;
+        margin-bottom: 10px;
+        border-radius: var(--ch-radius-tile);
+        background: var(--ch-surface);
+      }
+      .zone-head {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 12px;
+        --mdc-icon-size: 22px;
+      }
+      .zone-name {
+        font-size: 16px;
+        font-weight: 600;
+      }
+      .zone-state {
+        margin-left: auto;
+        font-size: 14px;
+        color: var(--ch-text-secondary);
+        font-variant-numeric: tabular-nums;
+      }
+      .zone.paused .zone-head,
+      .zone.paused .zone-state {
+        color: var(--ch-amber);
+      }
+      .chips.wrap {
+        flex-wrap: wrap;
+        overflow: visible;
+      }
+      .chips.wrap .chip {
+        min-height: 44px;
+        min-width: 64px;
+        justify-content: center;
       }
     `,
   ];

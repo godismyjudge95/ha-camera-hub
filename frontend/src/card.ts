@@ -1,4 +1,4 @@
-import { LitElement, css, html, nothing } from "lit";
+import { LitElement, type TemplateResult, css, html, nothing } from "lit";
 
 import { getHubConfig } from "./api/ha";
 import type { HomeAssistant, HubCamera, HubConfig } from "./ha-types";
@@ -9,6 +9,7 @@ import { tokens } from "./styles";
 import "./ui/clip-modal";
 import "./ui/clips-strip";
 import "./ui/doorbell-overlay";
+import type { MainView } from "./ui/main-view";
 import "./ui/main-view";
 import "./ui/pause-bar";
 import "./ui/tile-rail";
@@ -17,6 +18,10 @@ import { errorMessage } from "./errors";
 declare const __CARD_VERSION__: string;
 
 const SNAPSHOT_REFRESH_MS = 10_000;
+// Below this width the card uses the phone layout.
+const PHONE_MAX_WIDTH = 700;
+
+type PhoneTab = "cameras" | "alerts" | "pause";
 // An always-on screen keeps its picture still for hours. Moving the layout by
 // a pixel or two now and then spreads the wear of static edges and text.
 const SHIFT_MS = 2 * 60_000;
@@ -59,6 +64,8 @@ export class CameraHubCard extends LitElement {
     openClip: { state: true },
     reviewsRevision: { state: true },
     shift: { state: true },
+    phone: { state: true },
+    tab: { state: true },
   };
 
   declare hass: HomeAssistant;
@@ -73,6 +80,9 @@ export class CameraHubCard extends LitElement {
   // Changes when the alert list changes, so the card renders again.
   declare reviewsRevision: number;
   declare shift: [number, number];
+  // The card is narrow, as on a phone: one column with tabs.
+  declare phone: boolean;
+  declare tab: PhoneTab;
 
   private cardConfig: CardConfig = { type: "custom:camera-hub-card" };
   private loadStarted = false;
@@ -80,6 +90,9 @@ export class CameraHubCard extends LitElement {
   private snapshotTimer?: ReturnType<typeof setInterval>;
   private shiftTimer?: ReturnType<typeof setInterval>;
   private readonly reviewStore = new ReviewStore();
+  private readonly resizeObserver = new ResizeObserver(([entry]) => {
+    this.phone = entry.contentRect.width < PHONE_MAX_WIDTH;
+  });
 
   constructor() {
     super();
@@ -87,6 +100,8 @@ export class CameraHubCard extends LitElement {
     this.snapshotRefresh = Date.now();
     this.reviewsRevision = 0;
     this.shift = [0, 0];
+    this.phone = false;
+    this.tab = "cameras";
     this.reviewStore.onChange(() => this.reviewsRevision++);
     // Any touch on the card counts as activity, also on controls that stop
     // the event from bubbling further.
@@ -114,6 +129,7 @@ export class CameraHubCard extends LitElement {
   override connectedCallback(): void {
     super.connectedCallback();
     document.addEventListener("visibilitychange", this.onVisibilityChange);
+    this.resizeObserver.observe(this);
     this.refreshSnapshots();
     if (this.load.state === "ready") this.idle.restart();
     this.shiftTimer = setInterval(() => {
@@ -127,6 +143,7 @@ export class CameraHubCard extends LitElement {
     document.removeEventListener("visibilitychange", this.onVisibilityChange);
     clearInterval(this.snapshotTimer);
     clearInterval(this.shiftTimer);
+    this.resizeObserver.disconnect();
     this.idle.stop();
     this.reviewStore.stop();
     this.loadStarted = false;
@@ -172,13 +189,20 @@ export class CameraHubCard extends LitElement {
   }
 
   // An alert that is still going on has no clip yet: show it live instead.
-  private onClipOpen(review: Review): void {
-    if (review.end_time !== null) {
-      this.openClip = review;
+  // On a phone a clip plays in the main view, which stays on screen above the
+  // list; on a larger screen it opens in its own player.
+  private async onClipOpen(review: Review): Promise<void> {
+    const camera = this.cameraByFrigateName(review.camera);
+    if (review.end_time === null || (this.phone && camera)) {
+      if (camera) this.selected = camera.entity_id;
+      if (review.end_time === null || !camera) return;
+      await this.updateComplete;
+      const main = this.renderRoot.querySelector<MainView>("camera-hub-main-view");
+      await main?.updateComplete;
+      main?.playRecording(review.start_time - 2);
       return;
     }
-    const camera = this.cameraByFrigateName(review.camera);
-    if (camera) this.selected = camera.entity_id;
+    this.openClip = review;
   }
 
   private cameraByFrigateName(name: string): HubCamera | undefined {
@@ -203,32 +227,42 @@ export class CameraHubCard extends LitElement {
         ? this.hass.states[doorbell.active_entity]?.state === "on"
         : false;
     const main = cameras.find((camera) => camera.entity_id === this.selected);
+    const alerting = new Set(
+      this.reviewStore.reviews
+        .filter((review) => review.end_time === null)
+        .map((review) => review.camera),
+    );
+    const mainView = html`<camera-hub-main-view
+      .hass=${this.hass}
+      .camera=${main}
+      .snapshotRefresh=${this.snapshotRefresh}
+      .reviews=${this.reviewStore.reviews}
+    ></camera-hub-main-view>`;
+    const tiles = html`<camera-hub-tile-rail
+      .hass=${this.hass}
+      .cameras=${cameras}
+      .selected=${this.selected}
+      .refresh=${this.snapshotRefresh}
+      .alerting=${alerting}
+    ></camera-hub-tile-rail>`;
+    const layout = this.phone ? "list" : "row";
+    const pause = html`<camera-hub-pause-bar
+      .hass=${this.hass}
+      .zones=${this.load.config.zones ?? []}
+      .layout=${layout}
+    ></camera-hub-pause-bar>`;
+    const alerts = html`<camera-hub-clips-strip
+      .hass=${this.hass}
+      .cameras=${cameras}
+      .store=${this.reviewStore}
+      .layout=${layout}
+    ></camera-hub-clips-strip>`;
     return html`
-      <div class="layout" style="translate: ${this.shift[0]}px ${this.shift[1]}px">
-        <camera-hub-main-view
-          .hass=${this.hass}
-          .camera=${main}
-          .snapshotRefresh=${this.snapshotRefresh}
-          .reviews=${this.reviewStore.reviews}
-        ></camera-hub-main-view>
-        <camera-hub-tile-rail
-          .hass=${this.hass}
-          .cameras=${cameras}
-          .selected=${this.selected}
-          .refresh=${this.snapshotRefresh}
-          .alerting=${new Set(
-            this.reviewStore.reviews
-              .filter((review) => review.end_time === null)
-              .map((review) => review.camera),
-          )}
-        ></camera-hub-tile-rail>
-        <camera-hub-pause-bar .hass=${this.hass} .zones=${this.load.config.zones ?? []}></camera-hub-pause-bar>
-        <camera-hub-clips-strip
-          .hass=${this.hass}
-          .cameras=${cameras}
-          .store=${this.reviewStore}
-        ></camera-hub-clips-strip>
-      </div>
+      ${this.phone
+        ? this.renderPhone(mainView, tiles, alerts, pause, alerting.size > 0)
+        : html`<div class="layout" style="translate: ${this.shift[0]}px ${this.shift[1]}px">
+            ${mainView}${tiles}${pause}${alerts}
+          </div>`}
       ${this.openClip
         ? html`<camera-hub-clip-modal
             .hass=${this.hass}
@@ -244,6 +278,45 @@ export class CameraHubCard extends LitElement {
             .activeEntity=${doorbell.active_entity}
           ></camera-hub-doorbell-overlay>`
         : nothing}
+    `;
+  }
+
+  private renderPhone(
+    mainView: TemplateResult,
+    tiles: TemplateResult,
+    alerts: TemplateResult,
+    pause: TemplateResult,
+    alerting: boolean,
+  ) {
+    const zones = this.load.state === "ready" ? (this.load.config.zones ?? []) : [];
+    const paused = zones.some(
+      (zone) => zone.notify && zone.switch_entity && this.hass.states[zone.switch_entity]?.state === "off",
+    );
+    const notifyZones = zones.some((zone) => zone.notify);
+    const tabs: Array<{ id: PhoneTab; label: string; dot?: string }> = [
+      { id: "cameras", label: "Cameras" },
+      { id: "alerts", label: "Alerts", dot: alerting ? "red" : undefined },
+      ...(notifyZones ? [{ id: "pause" as const, label: "Pause", dot: paused ? "amber" : undefined }] : []),
+    ];
+    return html`
+      <div class="phone">
+        <div class="sticky">${mainView}</div>
+        <div class="tabs" role="tablist">
+          ${tabs.map(
+            (tab) => html`<button
+              role="tab"
+              aria-selected=${this.tab === tab.id}
+              class="tab ${this.tab === tab.id ? "on" : ""}"
+              @click=${() => (this.tab = tab.id)}
+            >
+              ${tab.label}${tab.dot ? html`<span class="tab-dot ${tab.dot}"></span>` : nothing}
+            </button>`,
+          )}
+        </div>
+        <div class="panel">
+          ${this.tab === "alerts" ? alerts : this.tab === "pause" && notifyZones ? pause : tiles}
+        </div>
+      </div>
     `;
   }
 
@@ -288,6 +361,58 @@ export class CameraHubCard extends LitElement {
           align-items: start;
           --ch-rail-columns: 2;
         }
+      }
+      /* Phone: the video stays at the top while the tab below it scrolls. */
+      .phone {
+        --ch-rail-columns: 2;
+      }
+      .sticky {
+        position: sticky;
+        top: var(--header-height, 56px);
+        z-index: 2;
+        margin: calc(var(--ch-gap) * -1) calc(var(--ch-gap) * -1) 0;
+        padding: var(--ch-gap) var(--ch-gap) 0;
+        background: var(--ch-bg);
+      }
+      .tabs {
+        display: flex;
+        gap: 4px;
+        margin: 12px 0;
+        padding: 4px;
+        border-radius: 999px;
+        background: var(--ch-surface);
+      }
+      .tab {
+        flex: 1;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        min-height: 44px;
+        border: 0;
+        border-radius: 999px;
+        background: none;
+        color: var(--ch-text-secondary);
+        font: inherit;
+        font-size: 15px;
+        font-weight: 600;
+        cursor: pointer;
+        touch-action: manipulation;
+      }
+      .tab.on {
+        background: var(--ch-surface-raised);
+        color: var(--ch-text);
+      }
+      .tab-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+      }
+      .tab-dot.red {
+        background: var(--ch-red);
+      }
+      .tab-dot.amber {
+        background: var(--ch-amber);
       }
       .notice {
         padding: 24px;

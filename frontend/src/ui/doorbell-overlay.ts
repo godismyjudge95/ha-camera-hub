@@ -280,6 +280,23 @@ export class DoorbellOverlay extends LitElement {
         background: transparent;
         border: 2px solid rgba(255, 255, 255, 0.25);
       }
+      /* A phone: Hold to talk gets a full-width row, the other buttons share
+         the row under it. */
+      @media (max-width: 600px) {
+        .name {
+          font-size: 24px;
+        }
+        .actions {
+          flex-wrap: wrap;
+        }
+        .action {
+          height: 60px;
+          font-size: 16px;
+        }
+        .talk {
+          flex: 1 0 100%;
+        }
+      }
       .countdown {
         height: 3px;
         border-radius: 2px;

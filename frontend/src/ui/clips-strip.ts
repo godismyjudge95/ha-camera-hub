@@ -6,7 +6,9 @@ import type { ReviewStore } from "../review-store";
 import {
   type Review,
   type ReviewFilter,
+  groupByDay,
   relativeTime,
+  reviewDuration,
   reviewLabel,
   reviewMatches,
   thumbnailPath,
@@ -30,6 +32,7 @@ export class ClipsStrip extends LitElement {
     thumbnails: { state: true },
     now: { state: true },
     revision: { state: true },
+    layout: { attribute: false },
   };
 
   declare hass: HomeAssistant;
@@ -40,6 +43,9 @@ export class ClipsStrip extends LitElement {
   declare now: number;
   // Changes when the store changes, so the list renders again.
   declare revision: number;
+  // "row": one row of thumbnails that scrolls sideways (tablet).
+  // "list": a vertical list grouped by day (phone).
+  declare layout: "row" | "list";
 
   private clock?: ReturnType<typeof setInterval>;
   private stopListening?: () => void;
@@ -51,6 +57,7 @@ export class ClipsStrip extends LitElement {
     this.thumbnails = {};
     this.now = Date.now();
     this.revision = 0;
+    this.layout = "row";
   }
 
   private get instanceId(): string | undefined {
@@ -107,8 +114,8 @@ export class ClipsStrip extends LitElement {
     const reviews = this.store?.reviews ?? [];
     const visible = reviews.filter((review) => reviewMatches(review, this.filter));
     return html`
-      <div class="header">
-        <span class="title">Recent alerts</span>
+      <div class="header ${this.layout}">
+        ${this.layout === "row" ? html`<span class="title">Recent alerts</span>` : nothing}
         <div class="chips">
           ${FILTERS.map(
             (filter) => html`
@@ -126,12 +133,46 @@ export class ClipsStrip extends LitElement {
         ? html`<div class="empty">Alerts are not available: ${this.store.error}</div>`
         : visible.length === 0
           ? html`<div class="empty">No alerts in the last ${this.store?.hours ?? 24} hours.</div>`
-          : html`
-              <div class="scroller">
-                ${visible.map((review) => this.renderClip(review))}
-              </div>
-            `}
+          : this.layout === "list"
+            ? this.renderList(visible)
+            : html`
+                <div class="scroller">
+                  ${visible.map((review) => this.renderClip(review))}
+                </div>
+              `}
     `;
+  }
+
+  private renderList(reviews: Review[]) {
+    return groupByDay(reviews, this.now).map(
+      (day) => html`
+        <div class="day">${day.label}</div>
+        ${day.reviews.map((review) => {
+          const thumbnail = this.thumbnails[review.id];
+          const time = new Date(review.start_time * 1000).toLocaleTimeString([], {
+            hour: "numeric",
+            minute: "2-digit",
+          });
+          const duration = reviewDuration(review);
+          return html`
+            <button class="row" @click=${() => this.open(review)}>
+              <span class="thumb">
+                ${thumbnail ? html`<img src=${thumbnail} alt="" loading="lazy" />` : nothing}
+                ${duration === undefined
+                  ? html`<span class="now"><span class="dot"></span>Now</span>`
+                  : nothing}
+              </span>
+              <span class="text">
+                <span class="row-label">${reviewLabel(review)}</span>
+                <span class="row-meta">${this.cameraName(review.camera)}</span>
+                <span class="row-meta">${time}${duration ? ` · ${duration}` : ""}</span>
+              </span>
+              <ha-icon class="chevron" icon="mdi:chevron-right"></ha-icon>
+            </button>
+          `;
+        })}
+      `,
+    );
   }
 
   private renderClip(review: Review) {
@@ -280,6 +321,73 @@ export class ClipsStrip extends LitElement {
         padding: 18px 4px;
         font-size: 14px;
         color: var(--ch-text-secondary);
+      }
+      .day {
+        margin: 14px 4px 6px;
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--ch-text-secondary);
+      }
+      .row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        width: 100%;
+        min-height: 84px;
+        padding: 6px;
+        border: 0;
+        border-radius: var(--ch-radius-tile);
+        background: none;
+        color: inherit;
+        font: inherit;
+        text-align: left;
+        cursor: pointer;
+        touch-action: manipulation;
+      }
+      .row:active {
+        background: var(--ch-surface);
+      }
+      .thumb {
+        position: relative;
+        flex: none;
+        width: 128px;
+        aspect-ratio: 16 / 9;
+        border-radius: var(--ch-radius-thumb);
+        overflow: hidden;
+        background: var(--ch-surface-raised);
+      }
+      .thumb img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+      .text {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+      .row-label {
+        font-size: 16px;
+        font-weight: 600;
+      }
+      .row-meta {
+        font-size: 13px;
+        color: var(--ch-text-secondary);
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .chevron {
+        flex: none;
+        color: var(--ch-text-secondary);
+      }
+      .header.list .chips {
+        flex-wrap: wrap;
       }
     `,
   ];

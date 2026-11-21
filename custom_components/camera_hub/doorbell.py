@@ -1,8 +1,10 @@
 """The doorbell takeover: who is at the door, shown on every Camera Hub card.
 
 A press on the doorbell button always starts a takeover. A person at the
-door starts one only when none is showing and the last one is a cooldown
-ago, so someone who waits at the door does not restart it over and over.
+door starts one only when none is showing, the last one is a cooldown ago,
+and the notifications of the doorbell camera's zone are not paused. So
+someone who waits at the door does not restart it over and over, and a
+pause of the zone also stops these takeovers.
 The card ends the takeover when it is dismissed or nobody touches it; a
 server-side limit ends it in any case.
 
@@ -54,9 +56,16 @@ class Takeover:
 class DoorbellCoordinator:
     """Starts and ends doorbell takeovers."""
 
-    def __init__(self, hass: HomeAssistant, config: DoorbellConfig) -> None:
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        config: DoorbellConfig,
+        is_paused: Callable[[], bool] = lambda: False,
+    ) -> None:
         self._hass = hass
         self.config = config
+        # True while the doorbell camera's zone is paused.
+        self._is_paused = is_paused
         self.takeover: Takeover | None = None
         self._last_started: datetime | None = None
         self._listeners: list[Callable[[str | None], None]] = []
@@ -103,6 +112,7 @@ class DoorbellCoordinator:
         if trigger == TRIGGER_PERSON and (
             self.takeover is not None
             or (self._last_started and now - self._last_started < self.config.person_cooldown)
+            or self._is_paused()
         ):
             return
         self.takeover = Takeover(trigger=trigger, started_at=now)

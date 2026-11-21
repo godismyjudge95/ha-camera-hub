@@ -85,3 +85,38 @@ export function clipPlaylistPath(instanceId: string, review: Review): string | u
   if (review.end_time === null) return undefined;
   return recordingPlaylistPath(instanceId, review.camera, review.start_time - 2, review.end_time + 2);
 }
+
+// The length of a review as "0:18" or "12:05"; undefined while it goes on.
+export function reviewDuration(review: Review): string | undefined {
+  if (review.end_time === null) return undefined;
+  const seconds = Math.max(0, Math.round(review.end_time - review.start_time));
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
+export interface ReviewDay {
+  // "Today", "Yesterday", or a date such as "Mon, Nov 17".
+  label: string;
+  reviews: Review[];
+}
+
+// Splits reviews (newest first) into days, in the local time zone.
+export function groupByDay(reviews: Review[], nowMs: number): ReviewDay[] {
+  const dayKey = (ms: number) => new Date(ms).toDateString();
+  const today = dayKey(nowMs);
+  const yesterday = dayKey(nowMs - 86_400_000);
+  const days: ReviewDay[] = [];
+  for (const review of reviews) {
+    const start = review.start_time * 1000;
+    const key = dayKey(start);
+    const label =
+      key === today
+        ? "Today"
+        : key === yesterday
+          ? "Yesterday"
+          : new Date(start).toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
+    const last = days.at(-1);
+    if (last?.label === label) last.reviews.push(review);
+    else days.push({ label, reviews: [review] });
+  }
+  return days;
+}

@@ -127,3 +127,16 @@ async def test_the_test_service_rings(hass: HomeAssistant, doorbell) -> None:
     await hass.services.async_call("camera_hub", "test_doorbell", blocking=True)
 
     assert hass.states.get(ACTIVE).attributes["trigger"] == "ring"
+
+
+async def test_a_paused_zone_stops_person_takeovers_but_not_rings(
+    hass: HomeAssistant, doorbell
+) -> None:
+    # The doorbell camera, camera.porch, is in the Backyard zone.
+    await hass.services.async_call("camera_hub", "pause_zone", {"zone": "Backyard"}, blocking=True)
+
+    await _turn_on(hass, PERSON)
+    assert hass.states.get(ACTIVE).state == STATE_OFF
+
+    await _turn_on(hass, RING)
+    assert hass.states.get(ACTIVE).state == STATE_ON
