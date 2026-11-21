@@ -128,6 +128,7 @@ export class ClipsStrip extends LitElement {
             `,
           )}
         </div>
+        <slot name="actions"></slot>
       </div>
       ${this.store?.error
         ? html`<div class="empty">Alerts are not available: ${this.store.error}</div>`
@@ -205,6 +206,13 @@ export class ClipsStrip extends LitElement {
         align-items: center;
         gap: 12px;
         margin-bottom: 10px;
+      }
+      /* Buttons the card adds at the end of the header. */
+      slot[name="actions"] {
+        display: contents;
+      }
+      ::slotted([slot="actions"]) {
+        margin-left: auto;
       }
       .title {
         font-size: 12px;

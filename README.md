@@ -21,7 +21,10 @@ notifications for Frigate's person alerts.
 - Push to talk (hold the microphone button), and pan and tilt.
 - The card returns to its default camera when nobody touches it. The pin
   button keeps the camera on screen until you tap it again or reload.
-- Pauses of the notifications, per zone.
+- Pauses of the notifications, per zone. On a tablet they open from the
+  "Phone alerts" button next to the recent alerts.
+- On a tablet, "Hide" folds the camera grid into a narrow button at the edge,
+  so the main video gets more room. Each device remembers it.
 - A doorbell screen over every card when the doorbell rings or a person comes
   to the door.
 

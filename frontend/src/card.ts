@@ -1,7 +1,7 @@
 import { LitElement, type TemplateResult, css, html, nothing } from "lit";
 
 import { getHubConfig } from "./api/ha";
-import type { HomeAssistant, HubCamera, HubConfig } from "./ha-types";
+import type { HomeAssistant, HubCamera, HubConfig, HubZone } from "./ha-types";
 import { IdleTimer } from "./idle";
 import { ReviewStore } from "./review-store";
 import type { Review } from "./reviews";
@@ -38,6 +38,26 @@ type LoadState =
   | { state: "ready"; config: HubConfig }
   | { state: "error"; message: string };
 
+const RAIL_KEY = "camera-hub-rail-collapsed";
+
+// Browser storage can be missing or blocked (private windows, some web
+// views); the grid is then simply open.
+function readRailCollapsed(): boolean {
+  try {
+    return localStorage.getItem(RAIL_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function writeRailCollapsed(collapsed: boolean): void {
+  try {
+    localStorage.setItem(RAIL_KEY, collapsed ? "1" : "0");
+  } catch {
+    // Not remembered; it still works for this page.
+  }
+}
+
 // After an update, a browser or app can still run the old card from its
 // cache. A reload fetches the page that loads the new card. It runs at most
 // once per version, so a cache that keeps the old card cannot cause a loop.
@@ -70,6 +90,8 @@ export class CameraHubCard extends LitElement {
     timelineOpen: { state: true },
     playbackPosition: { state: true },
     pinned: { state: true },
+    railCollapsed: { state: true },
+    pausesOpen: { state: true },
   };
 
   declare hass: HomeAssistant;
@@ -77,6 +99,11 @@ export class CameraHubCard extends LitElement {
   // The user pinned the camera on screen: no return to the default camera
   // until they unpin it. It lasts until the page reloads.
   declare pinned: boolean;
+  // Tablet: the camera grid is folded into a narrow button. Each device
+  // remembers it.
+  declare railCollapsed: boolean;
+  // Tablet: the panel to pause phone notifications is open.
+  declare pausesOpen: boolean;
   // The camera in the main view.
   declare selected: string | undefined;
   // Changes every SNAPSHOT_REFRESH_MS while the page is visible, so the
@@ -109,6 +136,8 @@ export class CameraHubCard extends LitElement {
     super();
     this.load = { state: "loading" };
     this.pinned = false;
+    this.railCollapsed = readRailCollapsed();
+    this.pausesOpen = false;
     this.snapshotRefresh = Date.now();
     this.reviewsRevision = 0;
     this.shift = [0, 0];
@@ -289,36 +318,22 @@ export class CameraHubCard extends LitElement {
           .position=${this.playbackPosition}
         ></camera-hub-vertical-timeline>`
       : nothing;
-    const layout = this.phone ? "list" : "row";
     const pause = html`<camera-hub-pause-bar
       .hass=${this.hass}
       .zones=${this.load.config.zones ?? []}
-      .layout=${layout}
     ></camera-hub-pause-bar>`;
     const alerts = html`<camera-hub-clips-strip
       .hass=${this.hass}
       .cameras=${cameras}
       .store=${this.reviewStore}
-      .layout=${layout}
-    ></camera-hub-clips-strip>`;
+      .layout=${this.phone ? "list" : "row"}
+    >
+      ${this.phone ? nothing : this.pausesButton()}
+    </camera-hub-clips-strip>`;
     return html`
       ${this.phone
         ? this.renderPhone(mainView, tiles, alerts, timeline, pause, alerting.size > 0)
-        : html`<div class="layout" style="translate: ${this.shift[0]}px ${this.shift[1]}px">
-            ${mainView}
-            ${this.timelineOpen
-              ? html`<div class="side-timeline">
-                  <div class="side-head">
-                    <span>Timeline · ${main?.name ?? ""}</span>
-                    <button @click=${() => (this.timelineOpen = false)}>
-                      <ha-icon icon="mdi:view-grid-outline"></ha-icon>Cameras
-                    </button>
-                  </div>
-                  ${timeline}
-                </div>`
-              : tiles}
-            ${pause}${alerts}
-          </div>`}
+        : this.renderTablet(mainView, tiles, alerts, timeline, pause, main, alerting.size > 0)}
       ${this.openClip
         ? html`<camera-hub-clip-modal
             .hass=${this.hass}
@@ -337,6 +352,97 @@ export class CameraHubCard extends LitElement {
     `;
   }
 
+  // The zones that send phone notifications, and which of them are paused.
+  private notifyZones(): { zones: HubZone[]; paused: HubZone[] } {
+    const all = this.load.state === "ready" ? (this.load.config.zones ?? []) : [];
+    const zones = all.filter((zone) => zone.notify);
+    const paused = zones.filter(
+      (zone) => zone.switch_entity && this.hass.states[zone.switch_entity]?.state === "off",
+    );
+    return { zones, paused };
+  }
+
+  private pausesButton() {
+    const { zones, paused } = this.notifyZones();
+    if (zones.length === 0) return nothing;
+    const label =
+      paused.length === 0
+        ? "Phone alerts"
+        : paused.length === 1
+          ? `${paused[0].name} paused`
+          : `${paused.length} zones paused`;
+    return html`<button
+      slot="actions"
+      class="pill-button ${paused.length ? "paused" : ""}"
+      @click=${() => (this.pausesOpen = true)}
+    >
+      <ha-icon icon=${paused.length ? "mdi:bell-sleep" : "mdi:bell-outline"}></ha-icon>${label}
+    </button>`;
+  }
+
+  private setRailCollapsed(collapsed: boolean): void {
+    this.railCollapsed = collapsed;
+    writeRailCollapsed(collapsed);
+  }
+
+  private renderTablet(
+    mainView: TemplateResult,
+    tiles: TemplateResult,
+    alerts: TemplateResult,
+    timeline: TemplateResult | typeof nothing,
+    pause: TemplateResult,
+    main: HubCamera | undefined,
+    alerting: boolean,
+  ) {
+    const collapsed = this.railCollapsed && !this.timelineOpen;
+    let side: TemplateResult;
+    if (this.timelineOpen) {
+      side = html`<div class="side">
+        <div class="side-head">
+          <span>Timeline · ${main?.name ?? ""}</span>
+          <button class="pill-button" @click=${() => (this.timelineOpen = false)}>
+            <ha-icon icon="mdi:view-grid-outline"></ha-icon>Cameras
+          </button>
+        </div>
+        ${timeline}
+      </div>`;
+    } else if (collapsed) {
+      side = html`<button class="rail-handle" aria-label="Show cameras" @click=${() => this.setRailCollapsed(false)}>
+        <ha-icon icon="mdi:chevron-left"></ha-icon>
+        <span>Cameras</span>
+        ${alerting ? html`<span class="tab-dot red"></span>` : nothing}
+      </button>`;
+    } else {
+      side = html`<div class="side">
+        <div class="side-head">
+          <span>Cameras</span>
+          <button class="pill-button" @click=${() => this.setRailCollapsed(true)}>
+            Hide<ha-icon icon="mdi:chevron-right"></ha-icon>
+          </button>
+        </div>
+        ${tiles}
+      </div>`;
+    }
+    return html`
+      <div class="layout ${collapsed ? "collapsed" : ""}" style="translate: ${this.shift[0]}px ${this.shift[1]}px">
+        ${mainView} ${side} ${alerts}
+      </div>
+      ${this.pausesOpen
+        ? html`<div class="sheet-backdrop" @click=${() => (this.pausesOpen = false)}>
+            <div class="sheet" role="dialog" aria-label="Phone alerts" @click=${(event: Event) => event.stopPropagation()}>
+              <div class="sheet-head">
+                <span>Phone alerts</span>
+                <button class="icon-button" aria-label="Close" @click=${() => (this.pausesOpen = false)}>
+                  <ha-icon icon="mdi:close"></ha-icon>
+                </button>
+              </div>
+              ${pause}
+            </div>
+          </div>`
+        : nothing}
+    `;
+  }
+
   private renderPhone(
     mainView: TemplateResult,
     tiles: TemplateResult,
@@ -345,11 +451,9 @@ export class CameraHubCard extends LitElement {
     pause: TemplateResult,
     alerting: boolean,
   ) {
-    const zones = this.load.state === "ready" ? (this.load.config.zones ?? []) : [];
-    const paused = zones.some(
-      (zone) => zone.notify && zone.switch_entity && this.hass.states[zone.switch_entity]?.state === "off",
-    );
-    const notifyZones = zones.some((zone) => zone.notify);
+    const { zones, paused: pausedZones } = this.notifyZones();
+    const paused = pausedZones.length > 0;
+    const notifyZones = zones.length > 0;
     const tabs: Array<{ id: PhoneTab; label: string; dot?: string }> = [
       { id: "cameras", label: "Cameras" },
       { id: "alerts", label: "Alerts", dot: alerting ? "red" : undefined },
@@ -399,7 +503,7 @@ export class CameraHubCard extends LitElement {
         display: grid;
         gap: calc(var(--ch-gap) * 1.5) var(--ch-gap);
         grid-template-columns: minmax(0, 1fr);
-        grid-template-areas: "main" "pause" "clips" "rail";
+        grid-template-areas: "main" "clips" "rail";
         --ch-rail-columns: 3;
       }
       camera-hub-main-view {
@@ -407,20 +511,18 @@ export class CameraHubCard extends LitElement {
       }
       camera-hub-clips-strip {
         grid-area: clips;
-      }
-      camera-hub-pause-bar {
-        grid-area: pause;
         min-width: 0;
       }
-      camera-hub-tile-rail,
-      .side-timeline {
+      .side,
+      .rail-handle {
         grid-area: rail;
       }
-      .side-timeline {
+      .side {
         display: flex;
         flex-direction: column;
         gap: 10px;
-        --ch-timeline-height: 600px;
+        min-width: 0;
+        --ch-timeline-height: calc(100dvh - var(--header-height, 56px) - 140px);
       }
       .side-head {
         display: flex;
@@ -430,30 +532,101 @@ export class CameraHubCard extends LitElement {
         font-weight: 600;
         color: var(--ch-text-secondary);
       }
-      .side-head button {
+      .pill-button {
         display: inline-flex;
         align-items: center;
         gap: 6px;
         min-height: 40px;
-        padding: 0 12px;
+        padding: 0 14px;
         border: 1px solid var(--ch-hairline);
         border-radius: 999px;
         background: var(--ch-surface);
         color: var(--ch-text);
         font: inherit;
         font-size: 13px;
+        font-weight: 600;
+        white-space: nowrap;
         cursor: pointer;
+        touch-action: manipulation;
         --mdc-icon-size: 18px;
       }
+      .pill-button.paused {
+        border-color: rgba(255, 176, 32, 0.5);
+        color: var(--ch-amber);
+      }
+      /* The folded camera grid: a narrow full-height button. */
+      .rail-handle {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 10px;
+        padding: 14px 0;
+        border: 1px solid var(--ch-hairline);
+        border-radius: var(--ch-radius-tile);
+        background: var(--ch-surface);
+        color: var(--ch-text-secondary);
+        font: inherit;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        touch-action: manipulation;
+        align-self: stretch;
+      }
+      .rail-handle span:not(.tab-dot) {
+        writing-mode: vertical-rl;
+        letter-spacing: 0.08em;
+      }
+      .sheet-backdrop {
+        position: fixed;
+        inset: 0;
+        z-index: 10;
+        display: grid;
+        place-items: center;
+        padding: 16px;
+        background: rgba(0, 0, 0, 0.55);
+      }
+      .sheet {
+        width: min(480px, 100%);
+        max-height: 90vh;
+        overflow: auto;
+        padding: 16px;
+        border-radius: var(--ch-radius-main);
+        background: var(--ch-bg);
+        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+      }
+      .sheet-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-size: 18px;
+        font-weight: 600;
+      }
+      .icon-button {
+        display: grid;
+        place-items: center;
+        width: 44px;
+        height: 44px;
+        border: 0;
+        border-radius: 50%;
+        background: var(--ch-surface);
+        color: var(--ch-text);
+        cursor: pointer;
+      }
       /* Tablet and desktop: the tiles sit in a column next to the main view,
-         and the alerts run under the main view. */
+         and the alerts run under the main view. The video is limited in
+         height so the alerts stay on screen. Folding the tiles gives the
+         video the full width. */
       @container (min-width: 900px) {
         .layout {
           grid-template-columns: minmax(0, 1fr) clamp(280px, 30%, 420px);
-          grid-template-areas: "main rail" "pause rail" "clips rail";
-          grid-template-rows: auto auto 1fr;
+          grid-template-areas: "main rail" "clips rail";
+          grid-template-rows: auto 1fr;
           align-items: start;
           --ch-rail-columns: 2;
+          --ch-main-max-height: calc(100dvh - var(--header-height, 56px) - 200px);
+        }
+        .layout.collapsed {
+          grid-template-columns: minmax(0, 1fr) 48px;
         }
       }
       /* Phone: the video stays at the top while the tab below it scrolls. */

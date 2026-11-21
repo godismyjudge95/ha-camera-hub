@@ -13,25 +13,18 @@ const DURATIONS = [
 const ALL = "all";
 
 // Phone notifications per zone: their state, and buttons to pause and
-// resume them. The state comes from the integration's zone entities, so every
-// screen shows the same pauses.
+// resume them, one row per zone. The state comes from the integration's zone
+// entities, so every screen shows the same pauses.
 export class PauseBar extends LitElement {
   static override properties = {
     hass: { attribute: false },
     zones: { attribute: false },
-    open: { state: true },
     now: { state: true },
-    layout: { attribute: false },
   };
 
   declare hass: HomeAssistant;
   declare zones: HubZone[];
-  // The zone whose duration buttons are open, or "all".
-  declare open: string | undefined;
   declare now: number;
-  // "row": one compact row of zone chips (tablet).
-  // "list": one row per zone with its buttons (phone).
-  declare layout: "row" | "list";
 
   private clock?: ReturnType<typeof setInterval>;
 
@@ -39,7 +32,6 @@ export class PauseBar extends LitElement {
     super();
     this.zones = [];
     this.now = Date.now();
-    this.layout = "row";
   }
 
   override connectedCallback(): void {
@@ -71,88 +63,11 @@ export class PauseBar extends LitElement {
 
   private call(service: "pause_zone" | "resume_zone", zone: string, minutes?: number): void {
     void this.hass.callService("camera_hub", service, minutes ? { zone, minutes } : { zone });
-    this.open = undefined;
   }
 
   override render() {
     const zones = this.zones.filter((zone) => zone.notify);
     if (zones.length === 0) return nothing;
-    if (this.layout === "list") return this.renderList(zones);
-    const openZone = zones.find((zone) => zone.id === this.open);
-    const anyPaused = zones.some((zone) => this.pausedUntil(zone) !== undefined);
-    return html`
-      <div class="row">
-        <span class="title">Phone alerts</span>
-        <div class="chips">
-          ${zones.map((zone) => {
-            const until = this.pausedUntil(zone);
-            return html`
-              <button
-                class="chip ${until ? "paused" : ""} ${this.open === zone.id ? "open" : ""}"
-                @click=${() => (this.open = this.open === zone.id ? undefined : zone.id)}
-              >
-                <ha-icon icon=${until ? "mdi:bell-sleep" : "mdi:bell-ring-outline"}></ha-icon>
-                ${zone.name}
-                <span class="state">${until ? `Paused · ${this.remaining(until)}` : "On"}</span>
-              </button>
-            `;
-          })}
-          ${zones.length > 1
-            ? html`<button
-                class="chip ${this.open === ALL ? "open" : ""}"
-                @click=${() => (this.open = this.open === ALL ? undefined : ALL)}
-              >
-                All
-              </button>`
-            : nothing}
-        </div>
-      </div>
-      ${this.open
-        ? html`
-            <div class="row options">
-              <span class="title">
-                ${openZone ? `Pause ${openZone.name}` : "Pause all zones"}
-              </span>
-              <div class="chips">
-                ${DURATIONS.map(
-                  (duration) => html`<button
-                    class="chip"
-                    @click=${() => this.call("pause_zone", this.open!, duration.minutes)}
-                  >
-                    ${duration.label}
-                  </button>`,
-                )}
-                ${(openZone ? this.pausedUntil(openZone) : anyPaused)
-                  ? html`<button class="chip resume" @click=${() => this.call("resume_zone", this.open!)}>
-                      <ha-icon icon="mdi:bell-ring-outline"></ha-icon>Resume
-                    </button>`
-                  : nothing}
-              </div>
-            </div>
-          `
-        : nothing}
-    `;
-  }
-
-  private durationButtons(zone: string, paused: boolean) {
-    return html`
-      <div class="chips wrap">
-        ${DURATIONS.map(
-          (duration) =>
-            html`<button class="chip" @click=${() => this.call("pause_zone", zone, duration.minutes)}>
-              ${duration.label}
-            </button>`,
-        )}
-        ${paused
-          ? html`<button class="chip resume" @click=${() => this.call("resume_zone", zone)}>
-              <ha-icon icon="mdi:bell-ring-outline"></ha-icon>Resume
-            </button>`
-          : nothing}
-      </div>
-    `;
-  }
-
-  private renderList(zones: HubZone[]) {
     const anyPaused = zones.some((zone) => this.pausedUntil(zone) !== undefined);
     return html`
       <p class="intro">Pause the phone notifications of a zone. The cameras keep recording.</p>
@@ -183,28 +98,29 @@ export class PauseBar extends LitElement {
     `;
   }
 
+  private durationButtons(zone: string, paused: boolean) {
+    return html`
+      <div class="chips wrap">
+        ${DURATIONS.map(
+          (duration) =>
+            html`<button class="chip" @click=${() => this.call("pause_zone", zone, duration.minutes)}>
+              ${duration.label}
+            </button>`,
+        )}
+        ${paused
+          ? html`<button class="chip resume" @click=${() => this.call("resume_zone", zone)}>
+              <ha-icon icon="mdi:bell-ring-outline"></ha-icon>Resume
+            </button>`
+          : nothing}
+      </div>
+    `;
+  }
+
   static override styles = [
     tokens,
     css`
       :host {
         display: block;
-      }
-      .row {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-      }
-      .options {
-        margin-top: 8px;
-        animation: open 150ms ease;
-      }
-      .title {
-        flex: none;
-        font-size: 12px;
-        font-weight: 600;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        color: var(--ch-text-secondary);
       }
       .chips {
         display: flex;
@@ -233,31 +149,10 @@ export class PauseBar extends LitElement {
       .chip:active {
         transform: scale(0.96);
       }
-      .chip .state {
-        font-weight: 500;
-        color: var(--ch-text-secondary);
-        font-variant-numeric: tabular-nums;
-      }
-      .chip.paused {
-        border-color: rgba(255, 176, 32, 0.5);
-        color: var(--ch-amber);
-      }
-      .chip.paused .state {
-        color: var(--ch-amber);
-      }
-      .chip.open {
-        border-color: var(--ch-accent);
-      }
       .chip.resume {
         background: var(--ch-accent);
         border-color: var(--ch-accent);
         color: #fff;
-      }
-      @keyframes open {
-        from {
-          opacity: 0;
-          transform: translateY(-4px);
-        }
       }
       .intro {
         margin: 6px 4px 12px;

@@ -525,6 +525,11 @@ export class MainView extends LitElement {
       .frame {
         position: relative;
         aspect-ratio: 16 / 9;
+        /* The card can limit the height (tablet), so the alerts under the
+           video stay on screen. The frame then gets narrower, not cut. */
+        max-height: var(--ch-main-max-height, none);
+        max-width: calc(var(--ch-main-max-height, 100vw) * 16 / 9);
+        margin-inline: auto;
         background: #000;
         border-radius: var(--ch-radius-main);
         overflow: hidden;
