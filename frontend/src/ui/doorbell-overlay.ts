@@ -206,7 +206,9 @@ export class DoorbellOverlay extends LitElement {
         display: flex;
         flex-direction: column;
         gap: 14px;
-        width: min(1200px, 100%, calc((100vh - 200px) * 16 / 9));
+        /* The header, the buttons and the countdown need about 200 px of the
+           height; the video gets the rest. */
+        width: min(1200px, 100%, calc((100vh - 240px) * 16 / 9));
       }
       .name {
         font-size: 30px;
