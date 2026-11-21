@@ -62,4 +62,11 @@ export interface HubConfig {
   // again. 0 turns this off.
   return_after_seconds: number;
   zones: HubZone[];
+  doorbell: HubDoorbell | null;
+}
+
+export interface HubDoorbell {
+  camera: HubCamera | null;
+  // On while the doorbell takeover shows.
+  active_entity: string | null;
 }

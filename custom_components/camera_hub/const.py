@@ -33,6 +33,11 @@ EVENT_DECISION: Final = "camera_hub_decision"
 # The action id prefix of a notification's pause button.
 PAUSE_ACTION_PREFIX: Final = "CAMERA_HUB_PAUSE_"
 
+# The doorbell: {"camera", "ring", "person", "person_cooldown_seconds",
+# "tablet_notify", "tablet_path"}.
+CONF_DOORBELL: Final = "doorbell"
+DEFAULT_PERSON_COOLDOWN: Final = 120
+
 # A zone name that stands for every zone in the pause services.
 ALL_ZONES: Final = "all"
 DEFAULT_PAUSE_MINUTES: Final = 30

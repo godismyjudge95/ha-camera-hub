@@ -12,6 +12,7 @@ import type { ControlAction, TalkState } from "./player-controls";
 import type { TimelineMarker } from "./timeline";
 import "./player-controls";
 import "./ptz-pad";
+import "./talk-banner";
 import "./timeline";
 
 const FADE_MS = 180;
@@ -395,27 +396,6 @@ export class MainView extends LitElement {
     };
   }
 
-  // Shown at the top of the video while the talk button is held, because the
-  // finger on the button hides the button itself.
-  private renderTalkBanner() {
-    const { phase, level, message } = this.talkUpdate;
-    if (phase === "idle") return nothing;
-    if (phase === "error") {
-      return html`<div class="talk-banner error"><ha-icon icon="mdi:microphone-off"></ha-icon>${message}</div>`;
-    }
-    const bars = [0.15, 0.35, 0.55, 0.75, 0.9];
-    return html`
-      <div class="talk-banner">
-        <ha-icon icon="mdi:microphone"></ha-icon>
-        <span>${phase === "connecting" ? "Connecting microphone…" : "Talking"}</span>
-        <span class="meter" aria-hidden="true">
-          ${bars.map((threshold) => html`<span class="bar ${level >= threshold ? "lit" : ""}"></span>`)}
-        </span>
-        <span class="hint">Release to stop</span>
-      </div>
-    `;
-  }
-
   private timelineMarkers(): TimelineMarker[] {
     const camera = this.camera;
     if (!camera) return [];
@@ -474,7 +454,7 @@ export class MainView extends LitElement {
           <span class="name">${camera?.name ?? ""}</span>
         </div>
         ${message ? html`<div class="message">${message}</div>` : nothing}
-        ${this.renderTalkBanner()}
+        <camera-hub-talk-banner .talk=${this.talkUpdate}></camera-hub-talk-banner>
         ${live && this.ptzOpen && camera?.ptz
           ? html`<camera-hub-ptz-pad class="ptz" .hass=${this.hass} .camera=${camera}></camera-hub-ptz-pad>`
           : nothing}
@@ -630,77 +610,12 @@ export class MainView extends LitElement {
         margin: 0;
         border-width: 2px;
       }
-      .talk-banner {
-        position: absolute;
-        top: 14px;
-        left: 50%;
-        transform: translateX(-50%);
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        padding: 10px 18px;
-        border-radius: 999px;
-        background: var(--ch-red);
-        color: #fff;
-        font-size: 16px;
-        font-weight: 700;
-        white-space: nowrap;
-        box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
-        animation: ch-drop 150ms ease;
-        --mdc-icon-size: 22px;
-        z-index: 2;
-      }
-      .talk-banner.error {
-        background: var(--ch-amber);
-        color: #000;
-        font-size: 14px;
-      }
-      .talk-banner .hint {
-        font-size: 12px;
-        font-weight: 600;
-        opacity: 0.8;
-      }
-      .meter {
-        display: inline-flex;
-        align-items: flex-end;
-        gap: 3px;
-        height: 18px;
-      }
-      .meter .bar {
-        width: 4px;
-        border-radius: 2px;
-        background: rgba(255, 255, 255, 0.35);
-      }
-      .meter .bar:nth-child(1) {
-        height: 6px;
-      }
-      .meter .bar:nth-child(2) {
-        height: 9px;
-      }
-      .meter .bar:nth-child(3) {
-        height: 12px;
-      }
-      .meter .bar:nth-child(4) {
-        height: 15px;
-      }
-      .meter .bar:nth-child(5) {
-        height: 18px;
-      }
-      .meter .bar.lit {
-        background: #fff;
-      }
       .ptz {
         position: absolute;
         right: 16px;
         top: 50%;
         transform: translateY(-50%);
         z-index: 2;
-      }
-      @keyframes ch-drop {
-        from {
-          opacity: 0;
-          transform: translate(-50%, -8px);
-        }
       }
       .chrome {
         position: absolute;

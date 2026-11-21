@@ -19,11 +19,13 @@ from .const import (
     CONF_CAMERAS,
     CONF_DEFAULT_CAMERA,
     CONF_DELIVERY,
+    CONF_DOORBELL,
     CONF_FACES,
     CONF_QUIET_WINDOW,
     CONF_RECIPIENTS,
     CONF_RETURN_AFTER,
     CONF_ZONES,
+    DEFAULT_PERSON_COOLDOWN,
     DEFAULT_QUIET_WINDOW,
     DEFAULT_RETURN_AFTER,
     DELIVERY_LIVE,
@@ -217,7 +219,7 @@ class CameraHubOptionsFlow(OptionsFlow):
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Pick what to change."""
         return self.async_show_menu(
-            step_id="init", menu_options=["cameras", "zones", "notifications"]
+            step_id="init", menu_options=["cameras", "zones", "notifications", "doorbell"]
         )
 
     async def async_step_cameras(
@@ -290,3 +292,72 @@ class CameraHubOptionsFlow(OptionsFlow):
             step_id="notifications",
             data_schema=_notifications_schema(dict(self.config_entry.options), notify_services),
         )
+
+    async def async_step_doorbell(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Set up the doorbell takeover; no camera turns it off."""
+        if user_input is not None:
+            doorbell = {
+                "camera": user_input.get("camera"),
+                "ring": list(user_input.get("ring", [])),
+                "person": list(user_input.get("person", [])),
+                "person_cooldown_seconds": int(
+                    user_input.get("person_cooldown_seconds", DEFAULT_PERSON_COOLDOWN)
+                ),
+                "tablet_notify": user_input.get("tablet_notify") or None,
+                "tablet_path": (user_input.get("tablet_path") or "").strip() or None,
+            }
+            options = {**self.config_entry.options, CONF_DOORBELL: doorbell}
+            if not doorbell["camera"]:
+                options.pop(CONF_DOORBELL)
+            return self.async_create_entry(data=options)
+
+        current = self.config_entry.options.get(CONF_DOORBELL) or {}
+        frigate_camera = selector.EntityFilterSelectorConfig(
+            domain="camera", integration=FRIGATE_DOMAIN
+        )
+        binary_sensors = selector.EntitySelector(
+            selector.EntitySelectorConfig(domain="binary_sensor", multiple=True)
+        )
+
+        def default(key: str, fallback: Any = vol.UNDEFINED) -> Any:
+            value = current.get(key)
+            return fallback if value is None else value
+
+        schema = vol.Schema(
+            {
+                vol.Optional("camera", default=default("camera")): selector.EntitySelector(
+                    selector.EntitySelectorConfig(filter=frigate_camera)
+                ),
+                vol.Optional("ring", default=default("ring", [])): binary_sensors,
+                vol.Optional("person", default=default("person", [])): binary_sensors,
+                vol.Required(
+                    "person_cooldown_seconds",
+                    default=default("person_cooldown_seconds", DEFAULT_PERSON_COOLDOWN),
+                ): vol.All(
+                    selector.NumberSelector(
+                        selector.NumberSelectorConfig(
+                            min=0,
+                            max=3600,
+                            step=10,
+                            unit_of_measurement="s",
+                            mode=selector.NumberSelectorMode.BOX,
+                        )
+                    ),
+                    vol.Coerce(int),
+                ),
+                vol.Optional(
+                    "tablet_notify", default=default("tablet_notify")
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=sorted(self.hass.services.async_services_for_domain("notify")),
+                        custom_value=True,
+                    )
+                ),
+                vol.Optional(
+                    "tablet_path", default=default("tablet_path")
+                ): selector.TextSelector(),
+            }
+        )
+        return self.async_show_form(step_id="doorbell", data_schema=schema)

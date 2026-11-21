@@ -21,3 +21,5 @@ resume_zone:
       example: Backyard
       selector:
         text:
+
+dismiss_doorbell:

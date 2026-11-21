@@ -9,16 +9,17 @@ from homeassistant.helpers.typing import ConfigType
 
 from . import websocket
 from .const import DOMAIN
+from .doorbell import DoorbellCoordinator
 from .frontend import async_register_frontend
 from .hub import CameraHubConfigEntry, HubData
-from .models import zones_from_options
+from .models import doorbell_from_options, zones_from_options
 from .notifier import Notifier
 from .pause import PauseManager
 from .services import async_register_services
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
-PLATFORMS = [Platform.SENSOR, Platform.SWITCH]
+PLATFORMS = [Platform.BINARY_SENSOR, Platform.EVENT, Platform.SENSOR, Platform.SWITCH]
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
@@ -35,10 +36,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: CameraHubConfigEntry) ->
     pauses = PauseManager(hass)
     await pauses.async_load()
     notifier = Notifier(hass, entry.options, zones, pauses)
-    entry.runtime_data = HubData(zones=zones, pauses=pauses, notifier=notifier)
+    doorbell_config = doorbell_from_options(entry.options)
+    doorbell = DoorbellCoordinator(hass, doorbell_config) if doorbell_config else None
+    entry.runtime_data = HubData(zones=zones, pauses=pauses, notifier=notifier, doorbell=doorbell)
     entry.async_on_unload(pauses.async_unload)
     entry.async_on_unload(notifier.async_stop)
     await notifier.async_start()
+    if doorbell:
+        doorbell.async_start()
+        entry.async_on_unload(doorbell.async_stop)
     entry.async_on_unload(entry.add_update_listener(_async_options_updated))
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True

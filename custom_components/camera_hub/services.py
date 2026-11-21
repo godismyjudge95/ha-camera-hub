@@ -1,4 +1,4 @@
-"""Services to pause and resume zone notifications."""
+"""Services to pause and resume zone notifications, and to end a doorbell takeover."""
 
 from __future__ import annotations
 
@@ -14,6 +14,7 @@ from .hub import CameraHubConfigEntry
 
 SERVICE_PAUSE_ZONE = "pause_zone"
 SERVICE_RESUME_ZONE = "resume_zone"
+SERVICE_DISMISS_DOORBELL = "dismiss_doorbell"
 
 ZONE_SCHEMA = vol.Schema({vol.Required("zone"): cv.string})
 PAUSE_SCHEMA = ZONE_SCHEMA.extend(
@@ -54,5 +55,10 @@ def async_register_services(hass: HomeAssistant) -> None:
         for zone_id in zone_ids(call.data["zone"]):
             pauses.async_resume(zone_id)
 
+    async def dismiss_doorbell(call: ServiceCall) -> None:
+        if doorbell := entry().runtime_data.doorbell:
+            doorbell.async_dismiss()
+
     hass.services.async_register(DOMAIN, SERVICE_PAUSE_ZONE, pause_zone, schema=PAUSE_SCHEMA)
+    hass.services.async_register(DOMAIN, SERVICE_DISMISS_DOORBELL, dismiss_doorbell)
     hass.services.async_register(DOMAIN, SERVICE_RESUME_ZONE, resume_zone, schema=ZONE_SCHEMA)

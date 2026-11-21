@@ -8,6 +8,7 @@ import type { Review } from "./reviews";
 import { tokens } from "./styles";
 import "./ui/clip-modal";
 import "./ui/clips-strip";
+import "./ui/doorbell-overlay";
 import "./ui/main-view";
 import "./ui/pause-bar";
 import "./ui/tile-rail";
@@ -183,7 +184,11 @@ export class CameraHubCard extends LitElement {
     if (this.load.state === "error") {
       return html`<div class="notice">Camera Hub is not available: ${this.load.message}</div>`;
     }
-    const { cameras } = this.load.config;
+    const { cameras, doorbell } = this.load.config;
+    const ringing =
+      doorbell?.camera && doorbell.active_entity
+        ? this.hass.states[doorbell.active_entity]?.state === "on"
+        : false;
     const main = cameras.find((camera) => camera.entity_id === this.selected);
     return html`
       <div class="layout">
@@ -213,6 +218,13 @@ export class CameraHubCard extends LitElement {
             .instanceId=${cameras[0]?.instance_id ?? ""}
             .cameraName=${this.cameraByFrigateName(this.openClip.camera)?.name ?? this.openClip.camera}
           ></camera-hub-clip-modal>`
+        : nothing}
+      ${ringing && doorbell?.camera && doorbell.active_entity
+        ? html`<camera-hub-doorbell-overlay
+            .hass=${this.hass}
+            .camera=${doorbell.camera}
+            .activeEntity=${doorbell.active_entity}
+          ></camera-hub-doorbell-overlay>`
         : nothing}
     `;
   }

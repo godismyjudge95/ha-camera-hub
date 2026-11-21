@@ -69,5 +69,21 @@ async def ws_get_config(
             "default_camera": options.get(CONF_DEFAULT_CAMERA),
             "return_after_seconds": options.get(CONF_RETURN_AFTER, DEFAULT_RETURN_AFTER),
             "zones": zones,
+            "doorbell": _doorbell(hass, registry, entry),
         },
     )
+
+
+def _doorbell(
+    hass: HomeAssistant, registry: er.EntityRegistry, entry: CameraHubConfigEntry
+) -> dict[str, Any] | None:
+    doorbell = entry.runtime_data.doorbell
+    if doorbell is None:
+        return None
+    camera = get_camera_info(hass, doorbell.config.camera)
+    return {
+        "camera": camera.as_dict() if camera else None,
+        "active_entity": registry.async_get_entity_id(
+            "binary_sensor", DOMAIN, f"{entry.entry_id}_doorbell"
+        ),
+    }

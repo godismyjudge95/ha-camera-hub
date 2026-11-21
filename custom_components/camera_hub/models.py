@@ -4,11 +4,13 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import timedelta
 from typing import Any
 
 from homeassistant.util import slugify
 
-from .const import CONF_ZONES
+from .const import CONF_DOORBELL, CONF_ZONES, DEFAULT_PERSON_COOLDOWN
+from .doorbell import DoorbellConfig
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,3 +56,20 @@ def zones_from_options(options: Mapping[str, Any]) -> list[Zone]:
             )
         )
     return zones
+
+
+def doorbell_from_options(options: Mapping[str, Any]) -> DoorbellConfig | None:
+    """Read the doorbell, or None when none is set up."""
+    raw = options.get(CONF_DOORBELL) or {}
+    if not raw.get("camera"):
+        return None
+    return DoorbellConfig(
+        camera=raw["camera"],
+        ring_entities=tuple(raw.get("ring", [])),
+        person_entities=tuple(raw.get("person", [])),
+        person_cooldown=timedelta(
+            seconds=raw.get("person_cooldown_seconds", DEFAULT_PERSON_COOLDOWN)
+        ),
+        tablet_notify=raw.get("tablet_notify") or None,
+        tablet_path=raw.get("tablet_path") or None,
+    )

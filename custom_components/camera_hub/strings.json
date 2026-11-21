@@ -29,7 +29,8 @@
         "menu_options": {
           "cameras": "Cameras",
           "zones": "Zones",
-          "notifications": "Notifications"
+          "notifications": "Notifications",
+          "doorbell": "Doorbell"
         }
       },
       "cameras": {
@@ -63,6 +64,24 @@
           "recipients": "For example mobile_app_my_phone.",
           "quiet_window_seconds": "A burst ends after this long without a new alert in the zone.",
           "faces": "No notification when every recognised face in an alert belongs to a person who is at home."
+        }
+      },
+      "doorbell": {
+        "title": "Doorbell",
+        "description": "When the doorbell rings, or a person comes to the door, every Camera Hub card shows the doorbell camera with Talk and Dismiss. Leave the camera empty to turn this off.",
+        "data": {
+          "camera": "Doorbell camera",
+          "ring": "Doorbell button sensors",
+          "person": "Person at the door sensors",
+          "person_cooldown_seconds": "Person cooldown",
+          "tablet_notify": "Wall tablet notify service",
+          "tablet_path": "Wall tablet dashboard path"
+        },
+        "data_description": {
+          "ring": "A press always shows the doorbell.",
+          "person": "A person shows the doorbell when none is showing and the last one is longer ago than the cooldown.",
+          "tablet_notify": "A Home Assistant Companion app on Android, for example mobile_app_kitchen_tablet. Its screen turns on, and it opens the dashboard path.",
+          "tablet_path": "For example /lovelace/cameras."
         }
       }
     },
@@ -98,6 +117,10 @@
           "description": "The zone name, or \"all\"."
         }
       }
+    },
+    "dismiss_doorbell": {
+      "name": "Dismiss doorbell",
+      "description": "End the doorbell takeover on every Camera Hub card."
     }
   },
   "selector": {
