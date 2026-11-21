@@ -1,0 +1,4 @@
+pytest-homeassistant-custom-component==0.13.375
+# The frontend component is a dependency of Camera Hub; HA needs its package to load it.
+home-assistant-frontend==20260930.5
+ruff==0.14.5

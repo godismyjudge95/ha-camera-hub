@@ -1,0 +1,60 @@
+"""Tests for the Camera Hub config and options flows."""
+
+from __future__ import annotations
+
+from homeassistant.config_entries import SOURCE_USER
+from homeassistant.core import HomeAssistant
+from homeassistant.data_entry_flow import FlowResultType
+from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+from custom_components.camera_hub.const import CONF_CAMERAS, CONF_DEFAULT_CAMERA, DOMAIN
+
+
+async def test_aborts_without_frigate(hass: HomeAssistant) -> None:
+    result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": SOURCE_USER})
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "frigate_missing"
+
+
+async def test_default_camera_must_be_selected(hass: HomeAssistant, frigate_cameras: None) -> None:
+    result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": SOURCE_USER})
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {CONF_CAMERAS: ["camera.porch"], CONF_DEFAULT_CAMERA: "camera.nursery"},
+    )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {CONF_DEFAULT_CAMERA: "default_not_selected"}
+
+
+async def test_creates_entry_with_cameras_as_options(
+    hass: HomeAssistant, frigate_cameras: None
+) -> None:
+    result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": SOURCE_USER})
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {CONF_CAMERAS: ["camera.nursery", "camera.porch"], CONF_DEFAULT_CAMERA: "camera.nursery"},
+    )
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["options"] == {
+        CONF_CAMERAS: ["camera.nursery", "camera.porch"],
+        CONF_DEFAULT_CAMERA: "camera.nursery",
+    }
+
+
+async def test_options_flow_changes_cameras(
+    hass: HomeAssistant, frigate_cameras: None, hub_entry: MockConfigEntry
+) -> None:
+    result = await hass.config_entries.options.async_init(hub_entry.entry_id)
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        {CONF_CAMERAS: ["camera.porch"], CONF_DEFAULT_CAMERA: "camera.porch"},
+    )
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert hub_entry.options == {
+        CONF_CAMERAS: ["camera.porch"],
+        CONF_DEFAULT_CAMERA: "camera.porch",
+    }

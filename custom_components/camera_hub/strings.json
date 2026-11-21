@@ -1,0 +1,35 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Camera Hub",
+        "description": "Pick the Frigate cameras to show, and the camera the main view shows by default.",
+        "data": {
+          "cameras": "Cameras",
+          "default_camera": "Default camera"
+        }
+      }
+    },
+    "error": {
+      "default_not_selected": "The default camera must be one of the selected cameras."
+    },
+    "abort": {
+      "frigate_missing": "Set up the Frigate integration first.",
+      "single_instance_allowed": "Camera Hub is already set up."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Cameras",
+        "data": {
+          "cameras": "Cameras",
+          "default_camera": "Default camera"
+        }
+      }
+    },
+    "error": {
+      "default_not_selected": "The default camera must be one of the selected cameras."
+    }
+  }
+}
