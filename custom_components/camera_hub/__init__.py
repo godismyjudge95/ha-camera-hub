@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.typing import ConfigType
@@ -10,22 +10,40 @@ from homeassistant.helpers.typing import ConfigType
 from . import websocket
 from .const import DOMAIN
 from .frontend import async_register_frontend
+from .hub import CameraHubConfigEntry, HubData
+from .models import zones_from_options
+from .pause import PauseManager
+from .services import async_register_services
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
+
+PLATFORMS = [Platform.SENSOR, Platform.SWITCH]
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Set up the parts that do not depend on a config entry."""
     await async_register_frontend(hass)
     websocket.async_register(hass)
+    async_register_services(hass)
     return True
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_setup_entry(hass: HomeAssistant, entry: CameraHubConfigEntry) -> bool:
     """Set up Camera Hub from a config entry."""
+    pauses = PauseManager(hass)
+    await pauses.async_load()
+    entry.runtime_data = HubData(zones=zones_from_options(entry.options), pauses=pauses)
+    entry.async_on_unload(pauses.async_unload)
+    entry.async_on_unload(entry.add_update_listener(_async_options_updated))
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 
 
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_unload_entry(hass: HomeAssistant, entry: CameraHubConfigEntry) -> bool:
     """Unload a config entry."""
-    return True
+    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+
+
+async def _async_options_updated(hass: HomeAssistant, entry: CameraHubConfigEntry) -> None:
+    """Zones can change with the options, and with them the entities."""
+    await hass.config_entries.async_reload(entry.entry_id)

@@ -9,7 +9,12 @@ from homeassistant.core import HomeAssistant
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.camera_hub.const import CONF_CAMERAS, CONF_DEFAULT_CAMERA, DOMAIN
+from custom_components.camera_hub.const import (
+    CONF_CAMERAS,
+    CONF_DEFAULT_CAMERA,
+    CONF_ZONES,
+    DOMAIN,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -82,7 +87,21 @@ def hub_entry(hass: HomeAssistant) -> MockConfigEntry:
         options={
             CONF_CAMERAS: ["camera.nursery", "camera.porch"],
             CONF_DEFAULT_CAMERA: "camera.nursery",
+            CONF_ZONES: [
+                {"name": "Backyard", "cameras": ["camera.porch"], "notify": True},
+                {"name": "Inside", "cameras": ["camera.nursery"], "notify": False},
+            ],
         },
     )
     entry.add_to_hass(hass)
     return entry
+
+
+@pytest.fixture
+async def hub(
+    hass: HomeAssistant, mocked_mqtt: None, frigate_cameras: None, hub_entry: MockConfigEntry
+) -> MockConfigEntry:
+    """Camera Hub, set up."""
+    assert await hass.config_entries.async_setup(hub_entry.entry_id)
+    await hass.async_block_till_done()
+    return hub_entry

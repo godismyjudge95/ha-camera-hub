@@ -351,8 +351,10 @@ export class MainView extends LitElement {
         break;
       case "talk-start": {
         const source = this.source();
+        const reason = talkUnavailableReason();
         clearTimeout(this.talkErrorTimer);
-        if (source) void this.talk.press(source);
+        if (reason) this.talkUpdate = { phase: "error", level: 0, message: reason };
+        else if (source) void this.talk.press(source);
         break;
       }
       case "talk-stop":

@@ -6,6 +6,7 @@ from typing import Any
 
 from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import entity_registry as er
 from homeassistant.loader import async_get_integration
 import voluptuous as vol
 
@@ -17,6 +18,7 @@ from .const import (
     DOMAIN,
 )
 from .frigate_meta import get_camera_info
+from .hub import CameraHubConfigEntry
 
 
 @callback
@@ -38,7 +40,21 @@ async def ws_get_config(
         connection.send_error(msg["id"], "not_configured", "Camera Hub is not set up")
         return
 
-    options = entries[0].options
+    entry: CameraHubConfigEntry = entries[0]
+    options = entry.options
+    registry = er.async_get(hass)
+    zones = [
+        zone.as_dict()
+        | {
+            "switch_entity": registry.async_get_entity_id(
+                "switch", DOMAIN, f"{entry.entry_id}_{zone.id}_alerts"
+            ),
+            "paused_until_entity": registry.async_get_entity_id(
+                "sensor", DOMAIN, f"{entry.entry_id}_{zone.id}_paused_until"
+            ),
+        }
+        for zone in entry.runtime_data.zones
+    ]
     cameras = [
         info.as_dict()
         for entity_id in options.get(CONF_CAMERAS, [])
@@ -52,5 +68,6 @@ async def ws_get_config(
             "cameras": cameras,
             "default_camera": options.get(CONF_DEFAULT_CAMERA),
             "return_after_seconds": options.get(CONF_RETURN_AFTER, DEFAULT_RETURN_AFTER),
+            "zones": zones,
         },
     )

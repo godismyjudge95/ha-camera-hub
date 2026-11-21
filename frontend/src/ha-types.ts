@@ -42,6 +42,18 @@ export interface HubCamera {
   ptz: boolean;
 }
 
+export interface HubZone {
+  id: string;
+  name: string;
+  cameras: string[];
+  // The zone sends phone notifications.
+  notify: boolean;
+  // On while the zone's notifications are on.
+  switch_entity: string | null;
+  // When the zone's pause ends.
+  paused_until_entity: string | null;
+}
+
 export interface HubConfig {
   version: string;
   cameras: HubCamera[];
@@ -49,4 +61,5 @@ export interface HubConfig {
   // Seconds without a touch before the main view shows the default camera
   // again. 0 turns this off.
   return_after_seconds: number;
+  zones: HubZone[];
 }

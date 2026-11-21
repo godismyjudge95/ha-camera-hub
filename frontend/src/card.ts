@@ -9,6 +9,7 @@ import { tokens } from "./styles";
 import "./ui/clip-modal";
 import "./ui/clips-strip";
 import "./ui/main-view";
+import "./ui/pause-bar";
 import "./ui/tile-rail";
 
 declare const __CARD_VERSION__: string;
@@ -198,6 +199,7 @@ export class CameraHubCard extends LitElement {
           .selected=${this.selected}
           .refresh=${this.snapshotRefresh}
         ></camera-hub-tile-rail>
+        <camera-hub-pause-bar .hass=${this.hass} .zones=${this.load.config.zones ?? []}></camera-hub-pause-bar>
         <camera-hub-clips-strip
           .hass=${this.hass}
           .cameras=${cameras}
@@ -229,7 +231,7 @@ export class CameraHubCard extends LitElement {
         display: grid;
         gap: calc(var(--ch-gap) * 1.5) var(--ch-gap);
         grid-template-columns: minmax(0, 1fr);
-        grid-template-areas: "main" "clips" "rail";
+        grid-template-areas: "main" "pause" "clips" "rail";
         --ch-rail-columns: 3;
       }
       camera-hub-main-view {
@@ -237,6 +239,10 @@ export class CameraHubCard extends LitElement {
       }
       camera-hub-clips-strip {
         grid-area: clips;
+      }
+      camera-hub-pause-bar {
+        grid-area: pause;
+        min-width: 0;
       }
       camera-hub-tile-rail {
         grid-area: rail;
@@ -246,8 +252,8 @@ export class CameraHubCard extends LitElement {
       @container (min-width: 900px) {
         .layout {
           grid-template-columns: minmax(0, 1fr) clamp(280px, 30%, 420px);
-          grid-template-areas: "main rail" "clips rail";
-          grid-template-rows: auto 1fr;
+          grid-template-areas: "main rail" "pause rail" "clips rail";
+          grid-template-rows: auto auto 1fr;
           align-items: start;
           --ch-rail-columns: 2;
         }

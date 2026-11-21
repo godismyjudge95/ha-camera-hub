@@ -26,6 +26,13 @@
     "step": {
       "init": {
         "title": "Camera Hub",
+        "menu_options": {
+          "cameras": "Cameras",
+          "zones": "Zones"
+        }
+      },
+      "cameras": {
+        "title": "Cameras",
         "data": {
           "cameras": "Cameras",
           "default_camera": "Default camera",
@@ -34,10 +41,46 @@
         "data_description": {
           "return_after_seconds": "Seconds without a touch before the main view shows the default camera again. 0 turns this off."
         }
+      },
+      "zones": {
+        "title": "Zones",
+        "description": "A zone is a group of cameras that share notifications and pauses. List the cameras in order of importance: when several cameras in a zone see a person at the same time, the notification shows the first one.",
+        "data": {
+          "zones": "Zones"
+        }
       }
     },
     "error": {
-      "default_not_selected": "The default camera must be one of the selected cameras."
+      "default_not_selected": "The default camera must be one of the selected cameras.",
+      "zone_names": "Each zone needs a name, and the names must be different.",
+      "zone_name_all": "\"all\" is reserved: it means every zone in the pause services.",
+      "zone_cameras": "Each zone needs at least one camera."
+    }
+  },
+  "services": {
+    "pause_zone": {
+      "name": "Pause zone notifications",
+      "description": "Pause the notifications of a zone, or of all zones, for a number of minutes.",
+      "fields": {
+        "zone": {
+          "name": "Zone",
+          "description": "The zone name, or \"all\"."
+        },
+        "minutes": {
+          "name": "Minutes",
+          "description": "How long the pause lasts."
+        }
+      }
+    },
+    "resume_zone": {
+      "name": "Resume zone notifications",
+      "description": "End the pause of a zone, or of all zones.",
+      "fields": {
+        "zone": {
+          "name": "Zone",
+          "description": "The zone name, or \"all\"."
+        }
+      }
     }
   }
 }

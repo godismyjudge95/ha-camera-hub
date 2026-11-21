@@ -70,12 +70,29 @@ export class PtzPad extends LitElement {
     </button>`;
   }
 
+  private goToPreset(event: Event, preset: string): void {
+    event.stopPropagation();
+    void ptzCommand(this.hass, this.camera.entity_id, "preset", preset);
+  }
+
   override render() {
     const zoom = this.info?.features.includes("zoom") ?? false;
+    const presets = this.info?.presets ?? [];
+    const home = presets.find((preset) => preset.toLowerCase() === "home");
+    const others = presets.filter((preset) => preset !== home);
     return html`
       <div class="pad" @pointerdown=${(event: Event) => event.stopPropagation()}>
         <div class="dpad">
           ${ARROWS.map((arrow) => this.holdButton("move", arrow.move, arrow.icon, arrow.label, arrow.move))}
+          ${home
+            ? html`<button
+                class="home"
+                aria-label="Go to the home position"
+                @click=${(event: Event) => this.goToPreset(event, home)}
+              >
+                <ha-icon icon="mdi:home"></ha-icon>
+              </button>`
+            : nothing}
         </div>
         ${zoom
           ? html`<div class="zoom">
@@ -83,17 +100,11 @@ export class PtzPad extends LitElement {
               ${this.holdButton("zoom", "out", "mdi:minus", "Zoom out")}
             </div>`
           : nothing}
-        ${this.info?.presets.length
+        ${others.length
           ? html`<div class="presets">
-              ${this.info.presets.map(
-                (preset) => html`<button
-                  class="preset"
-                  @click=${(event: Event) => {
-                    event.stopPropagation();
-                    void ptzCommand(this.hass, this.camera.entity_id, "preset", preset);
-                  }}
-                >
-                  <ha-icon icon=${preset === "home" ? "mdi:home" : "mdi:crosshairs-gps"}></ha-icon>
+              ${others.map(
+                (preset) => html`<button class="preset" @click=${(event: Event) => this.goToPreset(event, preset)}>
+                  <ha-icon icon="mdi:crosshairs-gps"></ha-icon>
                   ${preset}
                 </button>`,
               )}
@@ -141,6 +152,25 @@ export class PtzPad extends LitElement {
       }
       .dpad .hold {
         position: absolute;
+      }
+      .home {
+        position: absolute;
+        top: 60px;
+        left: 60px;
+        display: grid;
+        place-items: center;
+        width: 48px;
+        height: 48px;
+        border: 0;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.16);
+        color: var(--ch-text);
+        cursor: pointer;
+        touch-action: manipulation;
+        --mdc-icon-size: 24px;
+      }
+      .home:active {
+        background: var(--ch-accent);
       }
       .hold.pressed {
         background: var(--ch-accent);

@@ -128,8 +128,7 @@ export class PlayerControls extends LitElement {
           : this.button("mdi:volume-high", "Sound off", { action: "mute" })}
         ${talk
           ? html`<button
-              class="control talk ${talk.active ? "active" : ""}"
-              ?disabled=${!talk.available}
+              class="control talk ${talk.active ? "active" : ""} ${talk.available ? "" : "unavailable"}"
               aria-label="Hold to talk"
               title=${talk.reason ?? "Hold to talk"}
               @pointerdown=${(event: PointerEvent) => {
@@ -259,9 +258,8 @@ export class PlayerControls extends LitElement {
       .control.on {
         background: var(--ch-accent);
       }
-      .control:disabled {
-        opacity: 0.4;
-        cursor: default;
+      .control.unavailable {
+        opacity: 0.45;
       }
       .talk {
         touch-action: none;

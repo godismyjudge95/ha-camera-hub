@@ -1,0 +1,23 @@
+pause_zone:
+  fields:
+    zone:
+      required: true
+      example: Backyard
+      selector:
+        text:
+    minutes:
+      default: 60
+      selector:
+        number:
+          min: 1
+          max: 1440
+          unit_of_measurement: min
+          mode: box
+
+resume_zone:
+  fields:
+    zone:
+      required: true
+      example: Backyard
+      selector:
+        text:

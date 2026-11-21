@@ -13,6 +13,13 @@ CONF_DEFAULT_CAMERA: Final = "default_camera"
 CONF_RETURN_AFTER: Final = "return_after_seconds"
 DEFAULT_RETURN_AFTER: Final = 120
 
+# A list of zones: {"name", "cameras", "notify"}.
+CONF_ZONES: Final = "zones"
+
+# A zone name that stands for every zone in the pause services.
+ALL_ZONES: Final = "all"
+DEFAULT_PAUSE_MINUTES: Final = 60
+
 # The card bundle is served from this URL base by the integration itself.
 FRONTEND_URL_BASE: Final = "/camera_hub_static"
 CARD_FILENAME: Final = "camera-hub-card.js"
