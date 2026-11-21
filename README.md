@@ -15,7 +15,9 @@ notifications for Frigate's person alerts.
   timeline replaces the tiles; the rewind button opens it.
 - Live video plays the camera's main stream. If a device cannot decode it
   (for example an older tablet and a 2304x1296 stream), the card plays the
-  camera's detect stream instead.
+  camera's detect stream instead. Web views without MSE and WebRTC (for
+  example the Home Assistant app for macOS) play Home Assistant's own HLS
+  stream, which starts slower and runs a few seconds behind live.
 - Push to talk, and pan and tilt.
 - Pauses of the notifications, per zone.
 - A doorbell screen over every card when the doorbell rings or a person comes

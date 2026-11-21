@@ -4,10 +4,14 @@
 // costs no more than a short clip. Frigate's segments carry timestamps that
 // start at 0 and follow the playlist, so a segment can be appended on its own
 // after a seek.
+//
+// Browsers without MSE that play HLS themselves (Apple's web views) get the
+// signed playlist directly: the Frigate integration signs every segment link
+// in it.
 
 import { type MediaPlaylist, parseMediaPlaylist, segmentIndexAt, segmentUrl } from "./hls";
 import { codecsFromInitSegment } from "./mp4-codecs";
-import { type AttachedMediaSource, attachMediaSource } from "./mse";
+import { type AttachedMediaSource, attachMediaSource, hasMediaSource, playsHlsNatively } from "./mse";
 import { errorMessage } from "../errors";
 
 // How far ahead of the play position segments are loaded.
@@ -25,6 +29,7 @@ export class VodPlayer {
   private readonly loaded = new Set<number>();
   private loading = false;
   private closed = false;
+  private native = false;
   private abort = new AbortController();
 
   constructor(
@@ -33,12 +38,17 @@ export class VodPlayer {
   ) {}
 
   get duration(): number {
+    if (this.native) return Number.isFinite(this.video.duration) ? this.video.duration : 0;
     return this.playlist?.duration ?? 0;
   }
 
   // Loads a signed playlist URL and starts playing at `startAt` seconds.
   async load(playlistUrl: string, startAt = 0): Promise<void> {
     this.onState("loading");
+    if (!hasMediaSource() && playsHlsNatively(this.video)) {
+      await this.loadNative(playlistUrl, startAt);
+      return;
+    }
     try {
       const response = await fetch(playlistUrl, { signal: this.abort.signal });
       if (!response.ok) throw new Error(`The recording is not available (${response.status})`);
@@ -72,7 +82,37 @@ export class VodPlayer {
     this.abort.abort();
     this.video.removeEventListener("timeupdate", this.fill);
     this.video.removeEventListener("seeking", this.fill);
+    if (this.native) {
+      this.video.removeAttribute("src");
+      this.video.load();
+    }
     this.attached?.detach();
+  }
+
+  private async loadNative(playlistUrl: string, startAt: number): Promise<void> {
+    this.native = true;
+    const video = this.video;
+    video.srcObject = null;
+    video.src = playlistUrl;
+    const loaded = await new Promise<boolean>((resolve) => {
+      const done = (ok: boolean) => {
+        video.removeEventListener("loadedmetadata", onLoaded);
+        video.removeEventListener("error", onError);
+        resolve(ok);
+      };
+      const onLoaded = () => done(true);
+      const onError = () => done(false);
+      video.addEventListener("loadedmetadata", onLoaded);
+      video.addEventListener("error", onError);
+    });
+    if (this.closed) return;
+    if (!loaded) {
+      this.onState("error", "The recording is not available");
+      return;
+    }
+    video.currentTime = startAt;
+    this.onState("ready");
+    void video.play().catch(() => undefined);
   }
 
   // Appends the segments from the play position to AHEAD_SECONDS ahead.

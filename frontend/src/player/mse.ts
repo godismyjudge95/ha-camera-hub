@@ -17,6 +17,17 @@ const CODECS = [
 
 type MediaSourceClass = typeof MediaSource;
 
+// True if the browser has Media Source Extensions in either form.
+export function hasMediaSource(): boolean {
+  const w = window as unknown as { ManagedMediaSource?: unknown; MediaSource?: unknown };
+  return Boolean(w.ManagedMediaSource ?? w.MediaSource);
+}
+
+// True if the video element plays HLS by itself (Apple's browsers and apps).
+export function playsHlsNatively(video: HTMLVideoElement): boolean {
+  return video.canPlayType("application/vnd.apple.mpegurl") !== "";
+}
+
 export interface AttachedMediaSource {
   mediaSource: MediaSource;
   isTypeSupported(type: string): boolean;

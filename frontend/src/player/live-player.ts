@@ -15,17 +15,24 @@
 // the camera's smaller fallback stream and remembers, until the page
 // reloads, to start that camera on the fallback stream.
 
-import { getIceServers } from "../api/ha";
+import { getCameraHlsUrl, getIceServers } from "../api/ha";
 import type { HomeAssistant } from "../ha-types";
 import { negotiate, openSocket, send, waitForConnection } from "./go2rtc-socket";
-import { type AttachedMediaSource, attachMediaSource, liveEdgeAction, supportedCodecs } from "./mse";
+import {
+  type AttachedMediaSource,
+  attachMediaSource,
+  hasMediaSource,
+  liveEdgeAction,
+  playsHlsNatively,
+  supportedCodecs,
+} from "./mse";
 
 import type { StreamSource } from "./go2rtc-socket";
 import { errorMessage } from "../errors";
 
 export type { StreamSource } from "./go2rtc-socket";
 
-export type PlayerMode = "webrtc" | "mse";
+export type PlayerMode = "webrtc" | "mse" | "hls";
 
 export type PlayerStatus =
   | { state: "connecting" }
@@ -37,13 +44,22 @@ interface Session {
   close(): void;
 }
 
-// Some web views (for example the Home Assistant app for macOS) have no
-// WebRTC; they play over MSE only.
-function availableModes(): PlayerMode[] {
-  return typeof RTCPeerConnection === "undefined" ? ["mse"] : ["mse", "webrtc"];
+// The modes this browser can use, in order. Some web views (for example the
+// Home Assistant app for macOS) have neither MSE nor WebRTC; they play Home
+// Assistant's own HLS stream, which starts slower and runs a few seconds
+// behind live.
+function availableModes(video: HTMLVideoElement): PlayerMode[] {
+  const modes: PlayerMode[] = [];
+  if (hasMediaSource()) modes.push("mse");
+  if (typeof RTCPeerConnection !== "undefined") modes.push("webrtc");
+  if (!hasMediaSource() && playsHlsNatively(video)) modes.push("hls");
+  return modes;
 }
+
 const WEBRTC_TIMEOUT_MS = 5000;
 const FIRST_FRAME_MS = 6000;
+// Home Assistant starts its HLS stream on demand, which takes longer.
+const HLS_FIRST_FRAME_MS = 20_000;
 const MAX_RETRY_MS = 30_000;
 // The reason a session gives when the browser cannot decode the stream.
 // Another mode cannot help then, so the player goes to the fallback stream.
@@ -117,7 +133,9 @@ export class LivePlayer {
     this.onStatus({ state: "connecting" });
     let reason = "No video arrived";
     for (const stream of streams) {
-      for (const mode of availableModes()) {
+      for (const mode of availableModes(this.video)) {
+        // Home Assistant's HLS stream has one quality: try it once.
+        if (mode === "hls" && stream !== streams[0]) continue;
         let session: Session;
         try {
           session = await startSession(mode, this.getHass(), { ...source, stream }, this.video, sessionEnded);
@@ -133,7 +151,7 @@ export class LivePlayer {
         this.session = session;
         const result = await new Promise<true | string>((resolve) => {
           startFailed = resolve;
-          void waitForFirstFrame(this.video, FIRST_FRAME_MS).then((played) =>
+          void waitForFirstFrame(this.video, mode === "hls" ? HLS_FIRST_FRAME_MS : FIRST_FRAME_MS).then((played) =>
             resolve(played ? true : `No video arrived over ${mode.toUpperCase()}`),
           );
         });
@@ -168,9 +186,35 @@ function startSession(
   video: HTMLVideoElement,
   onEnded: (reason: string) => void,
 ): Promise<Session> {
-  return mode === "mse"
-    ? startMse(hass, source, video, onEnded)
-    : startWebRtc(hass, source, video, onEnded);
+  if (mode === "mse") return startMse(hass, source, video, onEnded);
+  if (mode === "webrtc") return startWebRtc(hass, source, video, onEnded);
+  return startHls(hass, source, video, onEnded);
+}
+
+async function startHls(
+  hass: HomeAssistant,
+  source: StreamSource,
+  video: HTMLVideoElement,
+  onEnded: (reason: string) => void,
+): Promise<Session> {
+  const url = await getCameraHlsUrl(hass, source.iceEntityId);
+  let closed = false;
+  const onError = () => {
+    if (closed) return;
+    close();
+    onEnded("The stream stopped");
+  };
+  const close = () => {
+    closed = true;
+    video.removeEventListener("error", onError);
+    video.removeAttribute("src");
+    video.load();
+  };
+  video.srcObject = null;
+  video.addEventListener("error", onError);
+  video.src = url;
+  void video.play().catch(() => undefined);
+  return { mode: "hls", close };
 }
 
 function waitForFirstFrame(video: HTMLVideoElement, timeoutMs: number): Promise<boolean> {

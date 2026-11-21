@@ -33,3 +33,14 @@ export async function getIceServers(
   });
   return result.configuration?.iceServers ?? [];
 }
+
+// The URL of Home Assistant's own HLS stream of a camera. Apple's web views
+// play it natively; the card uses it where neither MSE nor WebRTC exists.
+export async function getCameraHlsUrl(hass: HomeAssistant, cameraEntityId: string): Promise<string> {
+  const result = await hass.callWS<{ url: string }>({
+    type: "camera/stream",
+    entity_id: cameraEntityId,
+    format: "hls",
+  });
+  return hass.hassUrl(result.url);
+}
