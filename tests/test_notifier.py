@@ -117,3 +117,19 @@ async def test_the_notification_pause_button_pauses_the_zone(
 
     assert hass.states.get("switch.camera_hub_backyard_alerts").state == STATE_OFF
     assert phone == []
+
+
+async def test_a_burst_continues_through_a_reload(
+    hass: HomeAssistant, mocked_mqtt: None, frigate_cameras: None, hub_entry: MockConfigEntry, phone
+) -> None:
+    await _setup(hass, hub_entry, DELIVERY_LIVE)
+    async_fire_mqtt_message(hass, "frigate/reviews", review("new", "r1"))
+    await hass.async_block_till_done()
+
+    assert await hass.config_entries.async_reload(hub_entry.entry_id)
+    await hass.async_block_till_done()
+    async_fire_mqtt_message(hass, "frigate/reviews", review("new", "r2"))
+    await hass.async_block_till_done()
+
+    # The second alert updates the first notification instead of starting one.
+    assert [call.data["data"]["tag"] for call in phone] == ["event-r1", "event-r1"]

@@ -51,6 +51,11 @@ _LOGGER = logging.getLogger(__name__)
 # Decisions kept for diagnostics.
 HISTORY = 50
 
+# Where the bursts wait while the integration reloads, for example after an
+# options change. Without it, the alerts of a burst that runs through a
+# reload would start a second notification.
+_SAVED_STATE = "camera_hub_engine_state"
+
 
 class Notifier:
     """Sends Frigate alerts as phone notifications."""
@@ -73,7 +78,7 @@ class Notifier:
             for face in options.get(CONF_FACES, [])
             if face.get("sub_label") and face.get("person")
         }
-        self._state: EngineState = {}
+        self._state: EngineState = hass.data.pop(_SAVED_STATE, {})
         self._unsubscribe: list[CALLBACK_TYPE] = []
         self.history: deque[dict[str, Any]] = deque(maxlen=HISTORY)
 
@@ -89,9 +94,10 @@ class Notifier:
 
     @callback
     def async_stop(self) -> None:
-        """Stop listening."""
+        """Stop listening, and keep the bursts for the next start."""
         while self._unsubscribe:
             self._unsubscribe.pop()()
+        self._hass.data[_SAVED_STATE] = self._state
 
     def _engine_config(self) -> tuple[EngineConfig, dict[str, str]]:
         """Build the engine's zones, by Frigate camera name, and the camera names."""
