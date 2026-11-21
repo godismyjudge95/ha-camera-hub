@@ -23,3 +23,25 @@ export const tokens = css`
     -webkit-tap-highlight-color: transparent;
   }
 `;
+
+// A loading spinner. Add the class "spinner" to an element inside a
+// positioned container.
+export const spinnerStyles = css`
+  .spinner {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 36px;
+    height: 36px;
+    margin: -18px 0 0 -18px;
+    border: 3px solid rgba(255, 255, 255, 0.2);
+    border-top-color: var(--ch-text);
+    border-radius: 50%;
+    animation: ch-spin 0.9s linear infinite;
+  }
+  @keyframes ch-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+`;

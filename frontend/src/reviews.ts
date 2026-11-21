@@ -67,10 +67,21 @@ export function thumbnailPath(instanceId: string, review: Review): string {
   return `/api/frigate/${encodeURIComponent(instanceId)}/${relative}`;
 }
 
-// An MP4 of the review, with a little time before and after.
-export function clipPath(instanceId: string, review: Review): string | undefined {
+// The HLS playlist of a camera's recording between two times (epoch seconds).
+export function recordingPlaylistPath(
+  instanceId: string,
+  camera: string,
+  start: number,
+  end: number,
+): string {
+  return (
+    `/api/frigate/${encodeURIComponent(instanceId)}/vod/${encodeURIComponent(camera)}` +
+    `/start/${Math.floor(start)}/end/${Math.ceil(end)}/index.m3u8`
+  );
+}
+
+// The recording of a review, with a little time before and after.
+export function clipPlaylistPath(instanceId: string, review: Review): string | undefined {
   if (review.end_time === null) return undefined;
-  const start = Math.floor(review.start_time - 2);
-  const end = Math.ceil(review.end_time + 2);
-  return `/api/frigate/${encodeURIComponent(instanceId)}/recording/${encodeURIComponent(review.camera)}/start/${start}/end/${end}`;
+  return recordingPlaylistPath(instanceId, review.camera, review.start_time - 2, review.end_time + 2);
 }

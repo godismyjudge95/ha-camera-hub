@@ -10,16 +10,14 @@
 // A mode counts only when a frame plays. A connection that delivers no
 // picture within FIRST_FRAME_MS makes the player try the next mode.
 
-import { getIceServers, signPath } from "../api/ha";
+import { getIceServers } from "../api/ha";
 import type { HomeAssistant } from "../ha-types";
+import { negotiate, openSocket, send, waitForConnection } from "./go2rtc-socket";
 import { liveEdgeAction, supportedCodecs } from "./mse";
 
-export interface StreamSource {
-  instanceId: string;
-  stream: string;
-  // A Frigate camera entity, used to ask Home Assistant for ICE servers.
-  iceEntityId: string;
-}
+import type { StreamSource } from "./go2rtc-socket";
+
+export type { StreamSource } from "./go2rtc-socket";
 
 export type PlayerMode = "webrtc" | "mse";
 
@@ -149,25 +147,6 @@ function waitForFirstFrame(video: HTMLVideoElement, timeoutMs: number): Promise<
   });
 }
 
-async function openSocket(hass: HomeAssistant, source: StreamSource): Promise<WebSocket> {
-  const path =
-    `/api/frigate/${encodeURIComponent(source.instanceId)}/go2rtc/ws/api/ws` +
-    `?src=${encodeURIComponent(source.stream)}`;
-  const url = (await signPath(hass, path)).replace(/^http/, "ws");
-  const ws = new WebSocket(url);
-  ws.binaryType = "arraybuffer";
-  await new Promise<void>((resolve, reject) => {
-    ws.onopen = () => resolve();
-    ws.onerror = () => reject(new Error("Could not open the stream connection"));
-  });
-  ws.onerror = null;
-  return ws;
-}
-
-function send(ws: WebSocket, type: string, value: string): void {
-  if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type, value }));
-}
-
 async function startWebRtc(
   hass: HomeAssistant,
   source: StreamSource,
@@ -197,23 +176,7 @@ async function startWebRtc(
       video.srcObject = media;
     }
   };
-  pc.onicecandidate = (event) => send(ws, "webrtc/candidate", event.candidate?.candidate ?? "");
-
-  ws.onmessage = (event) => {
-    if (typeof event.data !== "string") return;
-    const message = JSON.parse(event.data) as { type: string; value: string };
-    if (message.type === "webrtc/answer") {
-      void pc.setRemoteDescription({ type: "answer", sdp: message.value });
-    } else if (message.type === "webrtc/candidate" && message.value) {
-      void pc.addIceCandidate({ candidate: message.value, sdpMid: "0" });
-    } else if (message.type === "error") {
-      pc.close();
-    }
-  };
-
-  const offer = await pc.createOffer();
-  await pc.setLocalDescription(offer);
-  send(ws, "webrtc/offer", offer.sdp ?? "");
+  await negotiate(ws, pc);
 
   try {
     await waitForConnection(pc, WEBRTC_TIMEOUT_MS);
@@ -235,21 +198,6 @@ async function startWebRtc(
   };
   ws.onclose = () => ended("The stream connection closed");
   return { mode: "webrtc", close };
-}
-
-function waitForConnection(pc: RTCPeerConnection, timeoutMs: number): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error("WebRTC timed out")), timeoutMs);
-    pc.onconnectionstatechange = () => {
-      if (pc.connectionState === "connected") {
-        clearTimeout(timer);
-        resolve();
-      } else if (pc.connectionState === "failed" || pc.connectionState === "closed") {
-        clearTimeout(timer);
-        reject(new Error("WebRTC failed"));
-      }
-    };
-  });
 }
 
 type MediaSourceClass = typeof MediaSource;

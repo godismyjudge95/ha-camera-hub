@@ -36,6 +36,10 @@ export interface HubCamera {
   instance_id: string;
   // The go2rtc stream to play.
   stream: string;
+  // The stream can send microphone audio to the camera's speaker.
+  talk: boolean;
+  // Frigate can pan and tilt the camera.
+  ptz: boolean;
 }
 
 export interface HubConfig {

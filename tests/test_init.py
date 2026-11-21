@@ -20,7 +20,7 @@ async def test_card_bundle_is_loaded_on_dashboards(
 ) -> None:
     await _setup(hass, hub_entry)
 
-    assert "/camera_hub_static/camera-hub-card.js?v=0.1.0" in hass.data[DATA_EXTRA_MODULE_URL].urls
+    assert "/camera_hub_static/camera-hub-card.js?v=0.2.0" in hass.data[DATA_EXTRA_MODULE_URL].urls
 
 
 async def test_config_lists_cameras_with_their_streams(
@@ -38,7 +38,7 @@ async def test_config_lists_cameras_with_their_streams(
 
     assert response["success"]
     assert response["result"] == {
-        "version": "0.1.0",
+        "version": "0.2.0",
         "default_camera": "camera.nursery",
         # Entries made before this option existed get the default.
         "return_after_seconds": 120,
@@ -49,6 +49,8 @@ async def test_config_lists_cameras_with_their_streams(
                 "frigate_name": "nursery",
                 "instance_id": "frigate",
                 "stream": "nursery",
+                "talk": True,
+                "ptz": True,
             },
             {
                 "entity_id": "camera.porch",
@@ -56,6 +58,8 @@ async def test_config_lists_cameras_with_their_streams(
                 "frigate_name": "porch",
                 "instance_id": "frigate",
                 "stream": "porch",
+                "talk": False,
+                "ptz": False,
             },
         ],
     }

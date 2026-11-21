@@ -22,6 +22,10 @@ describe("liveEdgeAction", () => {
     expect(liveEdgeAction(30, 15, 30.5)).toEqual({ removeEnd: 25 });
   });
 
+  test("moves into the buffer when the stream starts after 0", () => {
+    expect(liveEdgeAction(0, 0.4, 1.2)).toEqual({ seekTo: 0.4 });
+  });
+
   test("trims relative to the new position after a jump", () => {
     expect(liveEdgeAction(5, 0, 20)).toEqual({ seekTo: 19.5, removeEnd: 14.5 });
   });

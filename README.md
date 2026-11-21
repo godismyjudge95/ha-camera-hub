@@ -4,7 +4,7 @@ A Home Assistant integration that gives [Frigate](https://frigate.video) cameras
 dashboard card for a wall tablet or a phone: a large live view, camera tiles,
 recent clips, a doorbell screen, and notification controls.
 
-**Status:** early development. The live view, camera tiles and recent alerts work now.
+**Status:** early development. Live view, camera tiles, recent alerts, rewind, push to talk and pan/tilt work now.
 
 ## Requirements
 
@@ -39,6 +39,18 @@ Assistant Cloud these include TURN relays), is the second choice. A mode that
 shows no picture within 6 seconds makes the card try the other one.
 
 While a stream connects, the main view shows the camera's latest still.
+
+## Player controls
+
+- **Live:** sound, push to talk (cameras whose go2rtc stream has a backchannel),
+  pan and tilt (cameras Frigate controls over ONVIF), rewind, and full screen.
+- **Rewind and clips:** play and pause, a seek bar, 10 seconds back and forward,
+  1x/2x/4x speed, sound, and full screen. The card plays Frigate's HLS recordings
+  with its own small fMP4 player and loads only the segments near the play
+  position.
+
+Push to talk needs Home Assistant over HTTPS, because browsers allow the
+microphone only on secure pages.
 
 ## Development
 

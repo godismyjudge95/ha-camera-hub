@@ -3,6 +3,7 @@ import { LitElement, css, html, nothing } from "lit";
 import { getHubConfig } from "./api/ha";
 import type { HomeAssistant, HubCamera, HubConfig } from "./ha-types";
 import { IdleTimer } from "./idle";
+import { ReviewStore } from "./review-store";
 import type { Review } from "./reviews";
 import { tokens } from "./styles";
 import "./ui/clip-modal";
@@ -25,6 +26,24 @@ type LoadState =
   | { state: "ready"; config: HubConfig }
   | { state: "error"; message: string };
 
+// After an update, a browser or app can still run the old card from its
+// cache. A reload fetches the page that loads the new card. It runs at most
+// once per version, so a cache that keeps the old card cannot cause a loop.
+function reloadForNewVersion(version: string): boolean {
+  const key = `camera-hub-reloaded-for-${version}`;
+  try {
+    if (sessionStorage.getItem(key)) {
+      console.warn(`Camera Hub: the card is ${__CARD_VERSION__}, the integration is ${version}.`);
+      return false;
+    }
+    sessionStorage.setItem(key, "1");
+  } catch {
+    return false;
+  }
+  location.reload();
+  return true;
+}
+
 export class CameraHubCard extends LitElement {
   static override properties = {
     hass: { attribute: false },
@@ -32,6 +51,7 @@ export class CameraHubCard extends LitElement {
     selected: { state: true },
     snapshotRefresh: { state: true },
     openClip: { state: true },
+    reviewsRevision: { state: true },
   };
 
   declare hass: HomeAssistant;
@@ -43,16 +63,21 @@ export class CameraHubCard extends LitElement {
   declare snapshotRefresh: number;
   // The alert playing in the clip player.
   declare openClip: Review | undefined;
+  // Changes when the alert list changes, so the card renders again.
+  declare reviewsRevision: number;
 
   private cardConfig: CardConfig = { type: "custom:camera-hub-card" };
   private loadStarted = false;
   private readonly idle = new IdleTimer(() => this.selectDefault());
   private snapshotTimer?: ReturnType<typeof setInterval>;
+  private readonly reviewStore = new ReviewStore();
 
   constructor() {
     super();
     this.load = { state: "loading" };
     this.snapshotRefresh = Date.now();
+    this.reviewsRevision = 0;
+    this.reviewStore.onChange(() => this.reviewsRevision++);
     // Any touch on the card counts as activity, also on controls that stop
     // the event from bubbling further.
     this.addEventListener("pointerdown", () => this.idle.restart(), { capture: true });
@@ -88,6 +113,8 @@ export class CameraHubCard extends LitElement {
     document.removeEventListener("visibilitychange", this.onVisibilityChange);
     clearInterval(this.snapshotTimer);
     this.idle.stop();
+    this.reviewStore.stop();
+    this.loadStarted = false;
   }
 
   private refreshSnapshots(): void {
@@ -106,12 +133,16 @@ export class CameraHubCard extends LitElement {
   private async loadConfig(): Promise<void> {
     try {
       const config = await getHubConfig(this.hass);
-      if (config.version !== __CARD_VERSION__) {
-        console.warn(
-          `Camera Hub: the card is ${__CARD_VERSION__} but the integration is ${config.version}. Reload the page to get the new card.`,
+      if (config.version !== __CARD_VERSION__ && reloadForNewVersion(config.version)) return;
+      this.load = { state: "ready", config };
+      const instanceId = config.cameras[0]?.instance_id;
+      if (instanceId) {
+        this.reviewStore.start(
+          this.hass,
+          instanceId,
+          config.cameras.map((camera) => camera.frigate_name),
         );
       }
-      this.load = { state: "ready", config };
       this.selectDefault();
       this.idle.setTimeout(config.return_after_seconds);
     } catch (error) {
@@ -159,6 +190,7 @@ export class CameraHubCard extends LitElement {
           .hass=${this.hass}
           .camera=${main}
           .snapshotRefresh=${this.snapshotRefresh}
+          .reviews=${this.reviewStore.reviews}
         ></camera-hub-main-view>
         <camera-hub-tile-rail
           .hass=${this.hass}
@@ -166,7 +198,11 @@ export class CameraHubCard extends LitElement {
           .selected=${this.selected}
           .refresh=${this.snapshotRefresh}
         ></camera-hub-tile-rail>
-        <camera-hub-clips-strip .hass=${this.hass} .cameras=${cameras}></camera-hub-clips-strip>
+        <camera-hub-clips-strip
+          .hass=${this.hass}
+          .cameras=${cameras}
+          .store=${this.reviewStore}
+        ></camera-hub-clips-strip>
       </div>
       ${this.openClip
         ? html`<camera-hub-clip-modal

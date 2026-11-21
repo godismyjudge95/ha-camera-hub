@@ -31,6 +31,25 @@ def frigate_cameras(hass: HomeAssistant) -> None:
         "idle",
         {"camera_name": "porch", "client_id": "frigate", "friendly_name": "Porch"},
     )
+    # The parts of the Frigate config Camera Hub reads: the nursery stream has
+    # a two-way audio backchannel and the nursery has ONVIF pan and tilt.
+    hass.data["frigate"] = {
+        "frigate_entry": {
+            "config": {
+                "mqtt": {"client_id": "frigate"},
+                "go2rtc": {
+                    "streams": {
+                        "nursery": [
+                            "rtsp://user:secret@10.0.0.2:554/ch0",
+                            "rtsp://user:secret@10.0.0.2:554/ch0#media=audio#backchannel=1",
+                        ],
+                        "porch": ["rtsp://user:secret@10.0.0.3:554/main"],
+                    }
+                },
+                "cameras": {"nursery": {"onvif": {"host": "10.0.0.2"}}, "porch": {}},
+            }
+        }
+    }
 
 
 @pytest.fixture

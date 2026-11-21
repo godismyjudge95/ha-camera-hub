@@ -36,6 +36,10 @@ export function liveEdgeAction(
   const action: BufferAction = {};
   if (bufferEnd - currentTime > 3) {
     action.seekTo = bufferEnd - 0.5;
+  } else if (currentTime < bufferStart) {
+    // A stream's first data can start a little after 0. The browser does not
+    // always skip that gap, and the video would wait in front of it.
+    action.seekTo = bufferStart;
   }
   const playhead = action.seekTo ?? currentTime;
   if (playhead - bufferStart > 10) {

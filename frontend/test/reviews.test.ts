@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import {
   type Review,
-  clipPath,
+  clipPlaylistPath,
   relativeTime,
   reviewLabel,
   reviewMatches,
@@ -79,12 +79,12 @@ describe("media paths", () => {
   });
 
   test("ask for the recording with 2 s before and after the review", () => {
-    expect(clipPath("frigate", review("x1", 100.4, ["person"], 110.2))).toBe(
-      "/api/frigate/frigate/recording/porch/start/98/end/113",
+    expect(clipPlaylistPath("frigate", review("x1", 100.4, ["person"], 110.2))).toBe(
+      "/api/frigate/frigate/vod/porch/start/98/end/113/index.m3u8",
     );
   });
 
   test("have no clip while the review is still running", () => {
-    expect(clipPath("frigate", review("x1", 100, ["person"], null))).toBeUndefined();
+    expect(clipPlaylistPath("frigate", review("x1", 100, ["person"], null))).toBeUndefined();
   });
 });
