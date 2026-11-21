@@ -104,7 +104,14 @@ export class Timeline extends LitElement {
         ${needle !== undefined
           ? html`
               <span class="needle" style="left: ${this.fraction(needle) * 100}%">
-                <span class="needle-label">${this.clock(needle, true)}</span>
+                <span
+                  class="needle-label ${this.fraction(needle) > 0.85
+                    ? "end"
+                    : this.fraction(needle) < 0.15
+                      ? "start"
+                      : ""}"
+                  >${this.clock(needle, true)}</span
+                >
               </span>
             `
           : nothing}
@@ -175,6 +182,16 @@ export class Timeline extends LitElement {
         border-radius: 2px;
         background: var(--ch-text);
         box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.4);
+      }
+      /* Near an edge the label grows inward, so it stays on screen. */
+      .needle-label.end {
+        left: auto;
+        right: -4px;
+        transform: none;
+      }
+      .needle-label.start {
+        left: -4px;
+        transform: none;
       }
       .needle-label {
         position: absolute;
