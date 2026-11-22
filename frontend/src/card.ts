@@ -15,6 +15,9 @@ import "./ui/pause-bar";
 import "./ui/tile-rail";
 import "./ui/vertical-timeline";
 import { errorMessage } from "./errors";
+import { logger, setLogConnection } from "./log";
+
+const log = logger("card");
 
 declare const __CARD_VERSION__: string;
 
@@ -220,6 +223,7 @@ export class CameraHubCard extends LitElement {
   }
 
   override updated(): void {
+    if (this.hass) setLogConnection(this.hass);
     if (this.hass && !this.loadStarted) {
       this.loadStarted = true;
       void this.loadConfig();
@@ -243,6 +247,7 @@ export class CameraHubCard extends LitElement {
       this.idle.setTimeout(config.return_after_seconds);
     } catch (error) {
       const message = errorMessage(error);
+      log.error(`The card could not load its setup: ${message}`);
       this.load = { state: "error", message };
     }
   }

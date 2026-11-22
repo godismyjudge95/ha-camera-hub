@@ -5,7 +5,11 @@ import type { HomeAssistant, HubCamera } from "../ha-types";
 import { LivePlayer, type PlayerStatus } from "../player/live-player";
 import { Talk, type TalkUpdate, talkUnavailableReason } from "../player/talk";
 import { spinnerStyles, tokens } from "../styles";
+import { errorMessage } from "../errors";
+import { logger } from "../log";
 import "./talk-banner";
+
+const log = logger("doorbell");
 
 // Without a touch, the doorbell closes after this long. Each touch and each
 // new ring starts it again; it never closes while someone talks.
@@ -108,7 +112,9 @@ export class DoorbellOverlay extends LitElement {
 
   private dismiss(): void {
     clearInterval(this.clock);
-    void this.hass.callService("camera_hub", "dismiss_doorbell");
+    this.hass
+      .callService("camera_hub", "dismiss_doorbell")
+      .catch((error) => log.error(`camera_hub.dismiss_doorbell failed: ${errorMessage(error)}`));
   }
 
   private startTalking(event: PointerEvent): void {

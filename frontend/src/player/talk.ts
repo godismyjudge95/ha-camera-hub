@@ -10,6 +10,9 @@ import { getIceServers } from "../api/ha";
 import type { HomeAssistant } from "../ha-types";
 import { type StreamSource, negotiate, openSocket, waitForConnection } from "./go2rtc-socket";
 import { errorMessage } from "../errors";
+import { logger } from "../log";
+
+const log = logger("talk");
 
 const CONNECT_TIMEOUT_MS = 8000;
 const IDLE_CLOSE_MS = 30_000;
@@ -67,7 +70,9 @@ export class Talk {
       this.startMeter();
     } catch (error) {
       this.close();
-      this.onUpdate({ phase: "error", level: 0, message: talkErrorMessage(error) });
+      const message = talkErrorMessage(error);
+      log.warn(`Talk to ${source.stream} failed: ${message}`, { error: (error as { name?: string }).name });
+      this.onUpdate({ phase: "error", level: 0, message });
     }
   }
 
@@ -118,6 +123,7 @@ export class Talk {
     await waitForConnection(pc, CONNECT_TIMEOUT_MS);
     pc.onconnectionstatechange = () => {
       if (pc.connectionState === "failed" || pc.connectionState === "closed") {
+        log.warn(`The talk connection to ${source.stream} was lost (${pc.connectionState})`);
         this.close();
         this.onUpdate({ phase: "idle", level: 0 });
       }

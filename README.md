@@ -148,6 +148,17 @@ integration's proxy in Home Assistant, so it also works away from home.
   whose stream has a `backchannel=1` source in Frigate's go2rtc config, and pan
   and tilt for cameras with ONVIF in Frigate's config.
 
+## Logs
+
+The card writes what it does to the browser console, with the prefix
+`Camera Hub`. It also sends its warnings and errors to the Home Assistant log,
+with the user and the browser, so a failure on a wall tablet or a phone shows
+in **Settings › System › Logs** (logger `custom_components.camera_hub.card`).
+A repeated message is sent at most once a minute.
+
+For more detail in the console of one device, run
+`localStorage.setItem("camera-hub-debug", "1")` there and reload.
+
 ## Development
 
 Frontend (needs [Bun](https://bun.sh)):

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from homeassistant.components import websocket_api
@@ -20,11 +21,47 @@ from .const import (
 from .frigate_meta import get_camera_info
 from .hub import CameraHubConfigEntry
 
+# The card's warnings and errors, so a failure on a wall tablet or a phone
+# shows in the Home Assistant log.
+_CARD_LOGGER = logging.getLogger(f"{__package__}.card")
+_LEVELS = {"info": logging.INFO, "warning": logging.WARNING, "error": logging.ERROR}
+
 
 @callback
 def async_register(hass: HomeAssistant) -> None:
     """Register the websocket commands."""
     websocket_api.async_register_command(hass, ws_get_config)
+    websocket_api.async_register_command(hass, ws_log)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/log",
+        vol.Required("level"): vol.In(list(_LEVELS)),
+        vol.Required("scope"): vol.All(str, vol.Length(max=40)),
+        vol.Required("message"): vol.All(str, vol.Length(max=1000)),
+        vol.Optional("details", default=""): vol.All(str, vol.Length(max=2000)),
+        vol.Optional("client", default=""): vol.All(str, vol.Length(max=400)),
+    }
+)
+@callback
+def ws_log(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Write a message from the card to the Home Assistant log."""
+    user = connection.user.name if connection.user else "unknown user"
+    _CARD_LOGGER.log(
+        _LEVELS[msg["level"]],
+        "[%s] %s%s (%s; %s)",
+        msg["scope"],
+        msg["message"],
+        f" | {msg['details']}" if msg["details"] else "",
+        user,
+        msg["client"] or "unknown client",
+    )
+    connection.send_result(msg["id"])
 
 
 @websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/config"})

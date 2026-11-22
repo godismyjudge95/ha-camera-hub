@@ -8,6 +8,9 @@ import { spinnerStyles, tokens } from "../styles";
 import type { ControlAction } from "./player-controls";
 import "./player-controls";
 import { errorMessage } from "../errors";
+import { logger } from "../log";
+
+const log = logger("clip");
 
 // A large player for one alert. It starts playing at once, without sound.
 export class ClipModal extends LitElement {
@@ -127,6 +130,7 @@ export class ClipModal extends LitElement {
       (error) => {
         this.vodState = "error";
         this.message = errorMessage(error);
+        log.error(`Home Assistant did not sign the clip link: ${this.message}`, { path });
       },
     );
   }

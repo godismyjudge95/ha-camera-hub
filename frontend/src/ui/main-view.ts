@@ -13,6 +13,9 @@ import "./player-controls";
 import "./ptz-pad";
 import "./talk-banner";
 import { errorMessage } from "../errors";
+import { logger } from "../log";
+
+const log = logger("main-view");
 
 const FADE_MS = 180;
 const CONTROLS_HIDE_MS = 4000;
@@ -288,6 +291,7 @@ export class MainView extends LitElement {
       (error) => {
         this.vodState = "error";
         this.vodMessage = errorMessage(error);
+        log.error(`Home Assistant did not sign the recording link: ${this.vodMessage}`, { path });
       },
     );
   }

@@ -3,6 +3,9 @@
 
 import { signPath } from "../api/ha";
 import type { HomeAssistant } from "../ha-types";
+import { logger } from "../log";
+
+const log = logger("go2rtc");
 
 export interface StreamSource {
   instanceId: string;
@@ -20,7 +23,8 @@ export async function openSocket(hass: HomeAssistant, source: StreamSource): Pro
   ws.binaryType = "arraybuffer";
   await new Promise<void>((resolve, reject) => {
     ws.onopen = () => resolve();
-    ws.onerror = () => reject(new Error("Could not open the stream connection"));
+    ws.onerror = () =>
+      reject(new Error(`Could not open the stream connection to ${source.stream} through Home Assistant`));
   });
   ws.onerror = null;
   return ws;
@@ -32,14 +36,17 @@ export function send(ws: WebSocket, type: string, value: string): void {
 
 export function waitForConnection(pc: RTCPeerConnection, timeoutMs: number): Promise<void> {
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error("WebRTC timed out")), timeoutMs);
+    const timer = setTimeout(
+      () => reject(new Error(`WebRTC did not connect in ${timeoutMs / 1000} s (ICE state: ${pc.iceConnectionState})`)),
+      timeoutMs,
+    );
     pc.onconnectionstatechange = () => {
       if (pc.connectionState === "connected") {
         clearTimeout(timer);
         resolve();
       } else if (pc.connectionState === "failed" || pc.connectionState === "closed") {
         clearTimeout(timer);
-        reject(new Error("WebRTC failed"));
+        reject(new Error(`WebRTC failed (ICE state: ${pc.iceConnectionState})`));
       }
     };
   });
@@ -56,6 +63,7 @@ export async function negotiate(ws: WebSocket, pc: RTCPeerConnection): Promise<v
     } else if (message.type === "webrtc/candidate" && message.value) {
       void pc.addIceCandidate({ candidate: message.value, sdpMid: "0" });
     } else if (message.type === "error") {
+      log.warn(`go2rtc refused the WebRTC offer: ${message.value}`);
       pc.close();
     }
   });

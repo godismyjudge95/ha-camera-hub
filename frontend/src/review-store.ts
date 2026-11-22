@@ -2,6 +2,9 @@ import { getReviews, subscribeReviews } from "./api/frigate";
 import type { HomeAssistant } from "./ha-types";
 import { type Review, upsertReview } from "./reviews";
 import { errorMessage } from "./errors";
+import { logger } from "./log";
+
+const log = logger("alerts");
 
 const HOURS = 24;
 const LIMIT = 60;
@@ -37,6 +40,7 @@ export class ReviewStore {
       },
       (error) => {
         this.error = errorMessage(error);
+        log.warn(`The recent alerts did not load: ${this.error}`);
         this.notify();
       },
     );

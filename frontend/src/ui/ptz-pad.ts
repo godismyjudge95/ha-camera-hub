@@ -3,6 +3,10 @@ import { LitElement, css, html, nothing, type PropertyValues } from "lit";
 import { type PtzInfo, type PtzMove, getPtzInfo, ptzCommand } from "../api/ptz";
 import type { HomeAssistant, HubCamera } from "../ha-types";
 import { tokens } from "../styles";
+import { errorMessage } from "../errors";
+import { logger } from "../log";
+
+const log = logger("ptz");
 
 const ARROWS: Array<{ move: PtzMove; icon: string; label: string }> = [
   { move: "up", icon: "mdi:chevron-up", label: "Tilt up" },
@@ -32,7 +36,10 @@ export class PtzPad extends LitElement {
       this.info = undefined;
       getPtzInfo(this.hass, this.camera.instance_id, this.camera.frigate_name).then(
         (info) => (this.info = info),
-        () => (this.info = { features: ["pt"], presets: [] }),
+        (error) => {
+          log.warn(`The PTZ features of ${this.camera.frigate_name} did not load: ${errorMessage(error)}`);
+          this.info = { features: ["pt"], presets: [] };
+        },
       );
     }
   }
@@ -46,14 +53,14 @@ export class PtzPad extends LitElement {
     event.stopPropagation();
     (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
     this.moving = `${action}-${argument}`;
-    void ptzCommand(this.hass, this.camera.entity_id, action, argument);
+    this.send(action, argument);
   }
 
   private stop(event?: Event): void {
     event?.stopPropagation();
     if (!this.moving) return;
     this.moving = undefined;
-    void ptzCommand(this.hass, this.camera.entity_id, "stop");
+    this.send("stop");
   }
 
   private holdButton(action: "move" | "zoom", argument: string, icon: string, label: string, extra = "") {
@@ -72,7 +79,13 @@ export class PtzPad extends LitElement {
 
   private goToPreset(event: Event, preset: string): void {
     event.stopPropagation();
-    void ptzCommand(this.hass, this.camera.entity_id, "preset", preset);
+    this.send("preset", preset);
+  }
+
+  private send(action: "move" | "zoom" | "preset" | "stop", argument = ""): void {
+    ptzCommand(this.hass, this.camera.entity_id, action, argument).catch((error) =>
+      log.error(`PTZ ${action} ${argument} on ${this.camera.frigate_name} failed: ${errorMessage(error)}`),
+    );
   }
 
   override render() {

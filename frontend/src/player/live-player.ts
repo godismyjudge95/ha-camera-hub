@@ -29,6 +29,10 @@ import {
 
 import type { StreamSource } from "./go2rtc-socket";
 import { errorMessage } from "../errors";
+import { logger } from "../log";
+import { mediaErrorDetails } from "./media-error";
+
+const log = logger("live");
 
 export type { StreamSource } from "./go2rtc-socket";
 
@@ -136,12 +140,14 @@ export class LivePlayer {
       for (const mode of availableModes(this.video)) {
         // Home Assistant's HLS stream has one quality: try it once.
         if (mode === "hls" && stream !== streams[0]) continue;
+        log.debug("Starting", { stream, mode });
         let session: Session;
         try {
           session = await startSession(mode, this.getHass(), { ...source, stream }, this.video, sessionEnded);
         } catch (error) {
           if (!isCurrent()) return;
           reason = errorMessage(error);
+          log.info(`${stream} did not start over ${mode}: ${reason}`);
           continue;
         }
         if (!isCurrent()) {
@@ -158,12 +164,17 @@ export class LivePlayer {
         startFailed = undefined;
         if (!isCurrent()) return;
         if (result === true) {
-          if (stream !== source.stream) undecodable.add(source.stream);
+          log.info(`Playing ${stream} over ${mode}`);
+          if (stream !== source.stream) {
+            undecodable.add(source.stream);
+            log.warn(`This device cannot play ${source.stream}; it plays the smaller stream ${stream}`);
+          }
           return;
         }
         session.close();
         this.session = undefined;
         reason = result;
+        log.info(`${stream} gave no picture over ${mode}: ${reason}`);
         if (reason === DECODE_ERROR) break;
       }
     }
@@ -174,6 +185,10 @@ export class LivePlayer {
     this.session?.close();
     this.session = undefined;
     const delay = Math.min(MAX_RETRY_MS, 1000 * 2 ** this.attempt++);
+    log.warn(`Live video of ${this.source?.stream} failed: ${reason}`, {
+      retry_in_s: delay / 1000,
+      attempt: this.attempt,
+    });
     this.onStatus({ state: "retrying", inSeconds: Math.round(delay / 1000), reason });
     this.retryTimer = setTimeout(() => void this.connect(), delay);
   }
@@ -201,6 +216,7 @@ async function startHls(
   let closed = false;
   const onError = () => {
     if (closed) return;
+    log.warn(`Home Assistant's HLS stream of ${source.iceEntityId} failed`, mediaErrorDetails(video.error));
     close();
     onEnded("The stream stopped");
   };
@@ -279,10 +295,10 @@ async function startWebRtc(
   };
   pc.onconnectionstatechange = () => {
     if (pc.connectionState === "failed" || pc.connectionState === "closed") {
-      ended("The WebRTC connection was lost");
+      ended(`The WebRTC connection was lost (${pc.connectionState})`);
     }
   };
-  ws.onclose = () => ended("The stream connection closed");
+  ws.onclose = (event) => ended(`The stream connection closed (code ${event.code})`);
   return { mode: "webrtc", close };
 }
 
@@ -303,8 +319,19 @@ async function startMse(
   const { mediaSource, isTypeSupported } = attached;
 
   let closed = false;
-  const onVideoError = () => ended(DECODE_ERROR);
-  const onSourceClose = () => ended(DECODE_ERROR);
+  let codecs = "";
+  // The browser could not use the data: log what it says, then end.
+  const decodeFailed = (cause: string) => {
+    if (closed) return;
+    log.warn(`This device could not decode ${source.stream}: ${cause}`, {
+      codecs,
+      ...mediaErrorDetails(video.error),
+      source_state: mediaSource.readyState,
+    });
+    ended(DECODE_ERROR);
+  };
+  const onVideoError = () => decodeFailed("the video failed");
+  const onSourceClose = () => decodeFailed("the browser closed the video player");
   const close = () => {
     closed = true;
     ws.close();
@@ -329,15 +356,15 @@ async function startMse(
   const pump = () => {
     if (!buffer || buffer.updating || closed) return;
     if (mediaSource.readyState !== "open") {
-      ended(DECODE_ERROR);
+      decodeFailed("the video player closed");
       return;
     }
     const next = queue.shift();
     if (next) {
       try {
         buffer.appendBuffer(next);
-      } catch {
-        ended(DECODE_ERROR);
+      } catch (error) {
+        decodeFailed(`adding data failed (${errorMessage(error)})`);
       }
       return;
     }
@@ -355,21 +382,22 @@ async function startMse(
     if (typeof event.data === "string") {
       const message = JSON.parse(event.data) as { type: string; value: string };
       if (message.type === "mse") {
+        codecs = message.value;
         if (!isTypeSupported(message.value)) {
-          ended(DECODE_ERROR);
+          decodeFailed(`the codecs are not supported`);
           return;
         }
         buffer = mediaSource.addSourceBuffer(message.value);
         buffer.mode = "segments";
         buffer.addEventListener("updateend", pump);
       } else if (message.type === "error") {
-        ended(message.value);
+        ended(`go2rtc: ${message.value}`);
       }
       return;
     }
     queue.push(event.data as ArrayBuffer);
     pump();
   };
-  ws.onclose = () => ended("The stream connection closed");
+  ws.onclose = (event) => ended(`The stream connection closed (code ${event.code})`);
   return { mode: "mse", close };
 }

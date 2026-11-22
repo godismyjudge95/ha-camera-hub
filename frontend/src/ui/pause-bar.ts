@@ -2,6 +2,10 @@ import { LitElement, css, html, nothing } from "lit";
 
 import type { HomeAssistant, HubZone } from "../ha-types";
 import { tokens } from "../styles";
+import { errorMessage } from "../errors";
+import { logger } from "../log";
+
+const log = logger("pause");
 
 const DURATIONS = [
   { minutes: 15, label: "15m" },
@@ -62,7 +66,9 @@ export class PauseBar extends LitElement {
   }
 
   private call(service: "pause_zone" | "resume_zone", zone: string, minutes?: number): void {
-    void this.hass.callService("camera_hub", service, minutes ? { zone, minutes } : { zone });
+    this.hass
+      .callService("camera_hub", service, minutes ? { zone, minutes } : { zone })
+      .catch((error) => log.error(`camera_hub.${service} for ${zone} failed: ${errorMessage(error)}`));
   }
 
   override render() {

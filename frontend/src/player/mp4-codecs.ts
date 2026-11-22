@@ -78,3 +78,19 @@ export function codecsFromInitSegment(bytes: Uint8Array): string {
   if (codecs.length === 0) throw new Error("The recording has no known codec");
   return codecs.join(",");
 }
+
+// The picture size from the video sample entry (ISO 14496-12
+// VisualSampleEntry): after the box type come 6 reserved bytes, the data
+// reference index (2), 16 pre-defined and reserved bytes, then width and
+// height (2 bytes each).
+export function videoSizeFromInitSegment(bytes: Uint8Array): { width: number; height: number } | undefined {
+  for (const type of ["avc1", "hvc1", "hev1"]) {
+    const box = findBox(bytes, type);
+    if (box < 0 || box + 32 > bytes.length) continue;
+    const at = box + 4 + 24;
+    const width = (bytes[at] << 8) | bytes[at + 1];
+    const height = (bytes[at + 2] << 8) | bytes[at + 3];
+    if (width > 0 && height > 0) return { width, height };
+  }
+  return undefined;
+}

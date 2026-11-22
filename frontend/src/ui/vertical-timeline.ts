@@ -4,6 +4,8 @@ import { getCameraReviews, getRecordingsSummary } from "../api/frigate";
 import type { HomeAssistant, HubCamera } from "../ha-types";
 import { type Review, reviewLabel } from "../reviews";
 import { tokens } from "../styles";
+import { errorMessage } from "../errors";
+import { logger } from "../log";
 import {
   type RecordingDay,
   type Scale,
@@ -15,6 +17,8 @@ import {
   recordedRanges,
   timeAt,
 } from "../timeline-math";
+
+const log = logger("timeline");
 
 // Space above "now" at the top of the timeline.
 const TOP = 28;
@@ -152,7 +156,8 @@ export class VerticalTimeline extends LitElement {
         await getRecordingsSummary(this.hass, camera.instance_id, camera.frigate_name),
       );
       if (camera === this.camera) this.days = days;
-    } catch {
+    } catch (error) {
+      log.warn(`The recordings of ${camera.frigate_name} did not load: ${errorMessage(error)}`);
       this.days = [];
     }
   }
@@ -172,7 +177,10 @@ export class VerticalTimeline extends LitElement {
           if (camera !== this.camera) return;
           this.reviews = new Map(this.reviews).set(day, reviews);
         },
-        () => this.loadingDays.delete(day),
+        (error) => {
+          log.warn(`The events of ${camera.frigate_name} on ${day} did not load: ${errorMessage(error)}`);
+          this.loadingDays.delete(day);
+        },
       );
     }
   }
