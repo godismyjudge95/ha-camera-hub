@@ -17,6 +17,7 @@ export interface HassConnection {
 
 export interface HomeAssistant {
   states: Record<string, HassEntity>;
+  user?: { id: string };
   connection: HassConnection;
   callWS<T>(message: Record<string, unknown>): Promise<T>;
   callService(
@@ -72,4 +73,8 @@ export interface HubDoorbell {
   camera: HubCamera | null;
   // On while the doorbell takeover shows.
   active_entity: string | null;
+  // The user the wall tablet's Companion app signs in as, and the page it
+  // opens when the takeover starts.
+  tablet_user_id: string | null;
+  tablet_path: string | null;
 }

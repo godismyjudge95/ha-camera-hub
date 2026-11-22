@@ -8,8 +8,11 @@ pause of the zone also stops these takeovers.
 The card ends the takeover when it is dismissed or nobody touches it; a
 server-side limit ends it in any case.
 
-A wall tablet with the Home Assistant Companion app can be woken and sent to
-the Camera Hub dashboard on each takeover.
+A wall tablet with the Home Assistant Companion app is woken on each
+takeover. The card, which loads on every page, then opens the Camera Hub
+dashboard inside the running app. The Companion app's `command_webview`
+is not used: it loads the whole app again, which takes about 10 seconds on
+a slow tablet and looks like a crash.
 """
 
 from __future__ import annotations
@@ -142,7 +145,7 @@ class DoorbellCoordinator:
         self.async_dismiss()
 
     async def _async_wake_tablet(self) -> None:
-        """Turn the tablet's screen on and open the Camera Hub dashboard."""
+        """Turn the tablet's screen on; the card opens the dashboard."""
         service = self.config.tablet_notify
         if not service:
             return
@@ -150,12 +153,5 @@ class DoorbellCoordinator:
             await self._hass.services.async_call(
                 "notify", service, {"message": "command_screen_on"}, blocking=True
             )
-            if self.config.tablet_path:
-                await self._hass.services.async_call(
-                    "notify",
-                    service,
-                    {"message": "command_webview", "data": {"command": self.config.tablet_path}},
-                    blocking=True,
-                )
         except Exception:
             _LOGGER.exception("Could not wake the tablet with notify.%s", service)

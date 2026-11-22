@@ -111,7 +111,9 @@ diagnostics also list the last 50 decisions.
   someone talks.
 
 With a wall tablet that runs the Home Assistant Companion app on Android, Camera
-Hub turns its screen on and opens the dashboard path you set.
+Hub turns its screen on, and the card opens the dashboard path you set inside the
+running app, without a reload. The app must stay open (for example as the home
+app), signed in as the user that registered the tablet's app.
 
 ## Entities and services
 

@@ -9,6 +9,7 @@ from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
 from homeassistant.loader import async_get_integration
+from homeassistant.util import slugify
 import voluptuous as vol
 
 from .const import (
@@ -123,4 +124,20 @@ def _doorbell(
         "active_entity": registry.async_get_entity_id(
             "binary_sensor", DOMAIN, f"{entry.entry_id}_doorbell"
         ),
+        "tablet_user_id": _tablet_user_id(hass, doorbell.config.tablet_notify),
+        "tablet_path": doorbell.config.tablet_path,
     }
+
+
+def _tablet_user_id(hass: HomeAssistant, notify_service: str | None) -> str | None:
+    """Return the Home Assistant user that the tablet's Companion app signs in as.
+
+    The Companion app's notify service is `mobile_app_<device name>`; its
+    mobile_app config entry records the user who registered the app.
+    """
+    if not notify_service:
+        return None
+    for entry in hass.config_entries.async_entries("mobile_app"):
+        if f"mobile_app_{slugify(entry.data.get('device_name', ''))}" == notify_service:
+            return entry.data.get("user_id")
+    return None

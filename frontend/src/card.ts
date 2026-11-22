@@ -14,6 +14,7 @@ import "./ui/main-view";
 import "./ui/pause-bar";
 import "./ui/tile-rail";
 import "./ui/vertical-timeline";
+import { startDoorbellNavigator } from "./doorbell-navigator";
 import { errorMessage } from "./errors";
 import { logger, setLogConnection } from "./log";
 
@@ -705,5 +706,7 @@ registry.customCards.push({
   name: "Camera Hub",
   description: "Live cameras, clips and alerts from Frigate.",
 });
+
+startDoorbellNavigator();
 
 console.info(`Camera Hub card ${__CARD_VERSION__}`);

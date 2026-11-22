@@ -64,10 +64,8 @@ async def test_ring_shows_the_doorbell_and_wakes_the_tablet(hass: HomeAssistant,
     assert state.attributes["trigger"] == "ring"
     assert state.attributes["camera"] == "camera.porch"
     assert hass.states.get(EVENT).attributes["event_type"] == "ring"
-    assert [call.data for call in doorbell] == [
-        {"message": "command_screen_on"},
-        {"message": "command_webview", "data": {"command": "/lovelace/cameras"}},
-    ]
+    # Only the screen: command_webview would load the whole app again.
+    assert [call.data for call in doorbell] == [{"message": "command_screen_on"}]
 
 
 async def test_a_person_does_not_restart_a_showing_doorbell(hass: HomeAssistant, doorbell) -> None:
@@ -140,3 +138,21 @@ async def test_a_paused_zone_stops_person_takeovers_but_not_rings(
 
     await _turn_on(hass, RING)
     assert hass.states.get(ACTIVE).state == STATE_ON
+
+
+async def test_config_names_the_tablet_user_and_path(
+    hass: HomeAssistant, doorbell, hass_ws_client
+) -> None:
+    MockConfigEntry(
+        domain="mobile_app", data={"device_name": "Tablet", "user_id": "tablet-user"}
+    ).add_to_hass(hass)
+    MockConfigEntry(
+        domain="mobile_app", data={"device_name": "Phone", "user_id": "phone-user"}
+    ).add_to_hass(hass)
+    client = await hass_ws_client(hass)
+
+    await client.send_json_auto_id({"type": "camera_hub/config"})
+    doorbell_config = (await client.receive_json())["result"]["doorbell"]
+
+    assert doorbell_config["tablet_user_id"] == "tablet-user"
+    assert doorbell_config["tablet_path"] == "/lovelace/cameras"
