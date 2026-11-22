@@ -71,11 +71,14 @@ export class DoorbellOverlay extends LitElement {
   override firstUpdated(): void {
     const video = this.renderRoot.querySelector("video")!;
     this.player = new LivePlayer(() => this.hass, video, (status) => (this.status = status));
-    this.player.play({
-      instanceId: this.camera.instance_id,
-      stream: this.camera.stream,
-      iceEntityId: this.camera.entity_id,
-    });
+    this.player.play(
+      {
+        instanceId: this.camera.instance_id,
+        stream: this.camera.stream,
+        iceEntityId: this.camera.entity_id,
+      },
+      this.camera.fallback_stream,
+    );
   }
 
   override willUpdate(changed: PropertyValues<this>): void {
